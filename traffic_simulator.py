@@ -4,16 +4,21 @@ Streams legitimate remote-worker AnyConnect/IKEv2 logins (green). Press a hotkey
 a malformed, zero-day VPN handshake (magenta), modelled on a VPN-parser overflow. Simulated;
 no real exploit, and IPs use RFC 5737 documentation ranges.
 
-Hotkeys:  z = inject zero-day (rotates mild -> moderate -> critical)   q = quit
+Hotkeys:  z = inject zero-day (rotates mild -> moderate -> critical)
+          c = inject a critical zero-day (parser-crashing overflow, severity 10/10) - best for demos
+          r = replay the last zero-day from the same attacker (refused once its patch is approved)
+          q = quit
 Usage:    python traffic_simulator.py [--url http://localhost:3000/api/traffic] [--rate 1.0] [--auto-attack N]
 Standard library only.
 """
 import argparse
+import copy
 import json
 import os
 import random
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -26,10 +31,45 @@ TIERS = ["mild", "moderate", "critical"]
 
 
 # ── keyboard (non-blocking, cross-platform) ─────────────────────────────────────────
+# Real consoles (cmd, PowerShell, Windows Terminal, macOS/Linux terminals) read single keys.
+# Anything else (Git Bash/mintty, piped stdin, some IDE consoles) falls back to reading stdin
+# on a thread, where keys arrive after Enter.
+import queue
+import threading
+
+
+class LineKeys:
+    line_mode = True
+
+    def __enter__(self):
+        self.q = queue.Queue()
+        threading.Thread(target=self._read, daemon=True).start()
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def _read(self):
+        while True:
+            ch = sys.stdin.read(1)
+            if not ch:
+                return
+            if ch.strip():
+                self.q.put(ch.lower())
+
+    def poll(self):
+        try:
+            return self.q.get_nowait()
+        except queue.Empty:
+            return None
+
+
 if os.name == "nt":
     import msvcrt
 
-    class Keys:
+    class ConsoleKeys:
+        line_mode = False
+
         def __enter__(self):
             os.system("")  # enable ANSI colours in the Windows console
             return self
@@ -44,7 +84,9 @@ else:
     import termios
     import tty
 
-    class Keys:
+    class ConsoleKeys:
+        line_mode = False
+
         def __enter__(self):
             self.fd = sys.stdin.fileno()
             self.old = termios.tcgetattr(self.fd)
@@ -56,6 +98,10 @@ else:
 
         def poll(self):
             return sys.stdin.read(1).lower() if select.select([sys.stdin], [], [], 0)[0] else None
+
+
+def Keys():
+    return ConsoleKeys() if sys.stdin.isatty() else LineKeys()
 
 
 # ── packets ─────────────────────────────────────────────────────────────────────────
@@ -80,6 +126,17 @@ def legit():
         "actual_len": n,
         "cipher_suites": random.sample(GOOD_CIPHERS, random.randint(3, 6)),
     }
+
+
+def demo_critical():
+    """Always the same shape: overflow length + bad version + bad ciphers = 10/10, crashes the parser."""
+    p = legit()
+    p["src_ip"] = ip("192.0.2")
+    p["user"] = "vpnuser"
+    p["declared_len"] = 0x8000
+    p["tls_version"] = 0x0305
+    p["cipher_suites"] = [0xC02B, 0xC02B, 0x00FF]
+    return p
 
 
 def malformed(tier):
@@ -113,11 +170,16 @@ def malformed(tier):
 
 def post(url, packet):
     req = urllib.request.Request(url, json.dumps(packet).encode(), {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=5) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 403:  # refused at the edge by an approved virtual patch
+            return json.loads(e.read())
+        raise
 
 
-def send(url, p, tier=None):
+def send(url, p, tier=None, replay=False):
     p["ts"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     p["payload_hex"] = hexdump(p["actual_len"])
     row = f"{p['ts'][11:19]}  {p['src_ip']:<15} {p['user']:<10} {p['protocol']:<15}"
@@ -126,8 +188,12 @@ def send(url, p, tier=None):
     except Exception as e:
         print(f"{RED}post failed ({e}); is `npm run dev` running?{RESET}")
         return
-    if tier:
-        print(f"{MAGENTA}{BOLD}{row} !! ZERO-DAY injected ({tier}) -> held as {res.get('id')} severity {res.get('severity')}/10{RESET}")
+    label = f"replay ({tier})" if replay else f"injected ({tier})"
+    if res.get("verdict") == "blocked":
+        what = f"ZERO-DAY {label}" if tier else "login"
+        print(f"{RED}{BOLD}{row} {what} -> ERR_CONNECTION_REFUSED · blocked by {res.get('ruleId')}{RESET}")
+    elif tier:
+        print(f"{MAGENTA}{BOLD}{row} !! ZERO-DAY {label} -> held as {res.get('id')} severity {res.get('severity')}/10{RESET}")
     elif res.get("verdict") == "sandboxed":
         print(f"{RED}{row} flagged by AI -> {res.get('id')} severity {res.get('severity')}/10{RESET}")
     else:
@@ -142,17 +208,34 @@ def main():
     args = ap.parse_args()
 
     tier_i = 0
+    last = None  # (packet, tier) of the last zero-day, for the r replay
+    sys.stdout.reconfigure(line_buffering=True)  # show lines immediately even when not a tty
+    if os.name == "nt":
+        os.system("")  # enable ANSI colours
     with Keys() as keys:
         print(f"{BOLD}Virtual Patch Sandbox traffic simulator{RESET}  ->  {args.url}")
-        print(f"{DIM}legit logins at {args.rate}/s.  Press {RESET}{BOLD}z{RESET}{DIM} to inject a zero-day handshake, {RESET}{BOLD}q{RESET}{DIM} to quit.{RESET}\n")
+        if keys.line_mode:
+            print(f"{DIM}(this terminal doesn't pass single keys: type the key, then press Enter){RESET}")
+        print(f"{DIM}legit logins at {args.rate}/s.  Press {RESET}{BOLD}z{RESET}{DIM} to inject a zero-day ({RESET}{BOLD}c{RESET}{DIM} = always critical), {RESET}{BOLD}r{RESET}{DIM} to replay the last one, {RESET}{BOLD}q{RESET}{DIM} to quit.{RESET}\n")
         next_legit = time.monotonic()
         while True:
             k = keys.poll()
             if k == "q":
                 break
             if k == "z":
-                send(args.url, malformed(TIERS[tier_i]), TIERS[tier_i])
+                p = malformed(TIERS[tier_i])
+                last = (copy.deepcopy(p), TIERS[tier_i])
+                send(args.url, p, TIERS[tier_i])
                 tier_i = (tier_i + 1) % len(TIERS)
+            if k == "c":
+                p = demo_critical()
+                last = (copy.deepcopy(p), "critical")
+                send(args.url, p, "critical")
+            if k == "r":
+                if last:
+                    send(args.url, copy.deepcopy(last[0]), last[1], replay=True)
+                else:
+                    print(f"{DIM}nothing to replay yet; press z first{RESET}")
             now = time.monotonic()
             if now >= next_legit:
                 if args.auto_attack and random.randint(1, args.auto_attack) == 1:

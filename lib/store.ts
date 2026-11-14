@@ -1,29 +1,42 @@
 // In-memory store. Lives on globalThis so dev hot-reload keeps the data.
 // Swap for Supabase later (see lib/supabase.ts).
-import { listLedger, recordDecision } from "./audit";
-import { inspect, timings, type Baseline } from "./detector";
-import type { DashboardState, Decision, RawPacket, SandboxItem, Stats, TrafficEvent } from "./types";
+import { listLedger, recordDecision, resetLedgerView } from "./audit";
+import { inspect, timings, type Baseline, type Rule } from "./detector";
+import type { DashboardState, Decision, DeployedPatch, RawPacket, SandboxItem, Stats, TrafficEvent } from "./types";
 
 type Store = {
   items: SandboxItem[];
   traffic: TrafficEvent[];
   recentLegit: RawPacket[]; // baseline + false-positive check window
+  pendingRules: Record<string, Rule[]>; // itemId -> drafted rules (predicates stay server-side)
+  deployed: (DeployedPatch & { rules: Rule[] })[]; // live at the edge
   stats: Stats;
   totalMs: number;
   lastEventAt: number;
   seq: number;
 };
 
-const g = globalThis as unknown as { __vpsStore4?: Store };
-const store: Store = (g.__vpsStore4 ??= {
+const fresh = (): Store => ({
   items: [],
   traffic: [],
   recentLegit: [],
-  stats: { seen: 0, legit: 0, sandboxed: 0, patched: 0, allowed: 0, crashesPrevented: 0, avgVerdictMs: 0 },
+  pendingRules: {},
+  deployed: [],
+  stats: { seen: 0, legit: 0, sandboxed: 0, patched: 0, allowed: 0, crashesPrevented: 0, blockedAtEdge: 0, avgVerdictMs: 0 },
   totalMs: 0,
   lastEventAt: 0,
   seq: 0,
 });
+
+const g = globalThis as unknown as { __vpsStore5?: Store };
+const store: Store = (g.__vpsStore5 ??= fresh());
+
+// Demo reset: empty queue, patches, traffic and counters. Keeps the simulator "online" state.
+export function reset() {
+  const lastEventAt = store.lastEventAt;
+  Object.assign(store, fresh(), { lastEventAt });
+  resetLedgerView();
+}
 
 function baseline(): Baseline {
   const xs = store.recentLegit.map((p) => p.declared_len);
@@ -34,15 +47,36 @@ function baseline(): Baseline {
   return { mean, std, n };
 }
 
-export function ingest(p: RawPacket) {
-  const t = timings(p);
+function pushTraffic(e: TrafficEvent) {
+  store.traffic.unshift(e);
+  store.traffic.length = Math.min(store.traffic.length, 50);
+}
+
+// Approved virtual patches run first: a match is refused at the edge without reaching the AI or the firewall.
+function enforce(p: RawPacket) {
+  const patch = store.deployed.find((d) => (d.srcBlocked && d.srcIp === p.src_ip) || d.rules.some((r) => r.test(p)));
+  if (!patch) return null;
+  patch.hits++;
+  patch.lastHit = p.ts;
+  store.stats.blockedAtEdge++;
+  pushTraffic({ seq: store.stats.seen, ts: p.ts, srcIp: p.src_ip, user: p.user, protocol: p.protocol, verdict: "blocked", severity: 0, verdictMs: 0.04, ruleId: patch.ruleId });
+  return patch;
+}
+
+export type IngestResult = { blocked: DeployedPatch } | { item: SandboxItem } | null;
+
+export function ingest(p: RawPacket): IngestResult {
   store.stats.seen++;
-  store.totalMs += t.totalMs;
-  store.stats.avgVerdictMs = +(store.totalMs / store.stats.seen).toFixed(2);
   store.lastEventAt = Date.now();
+  const patch = enforce(p);
+  if (patch) return { blocked: patch };
+
+  const t = timings(p);
+  store.totalMs += t.totalMs;
+  store.stats.avgVerdictMs = +(store.totalMs / (store.stats.seen - store.stats.blockedAtEdge)).toFixed(2);
   const v = inspect(p, baseline());
 
-  store.traffic.unshift({
+  pushTraffic({
     seq: store.stats.seen,
     ts: p.ts,
     srcIp: p.src_ip,
@@ -52,7 +86,6 @@ export function ingest(p: RawPacket) {
     severity: v?.severity ?? 0,
     verdictMs: t.totalMs,
   });
-  store.traffic.length = Math.min(store.traffic.length, 50);
 
   if (!v) {
     store.stats.legit++;
@@ -87,9 +120,10 @@ export function ingest(p: RawPacket) {
   };
   store.items.unshift(item);
   store.items.length = Math.min(store.items.length, 200);
+  store.pendingRules[item.id] = v.rules;
   store.stats.sandboxed++;
   if (v.crashes) store.stats.crashesPrevented++;
-  return item;
+  return { item };
 }
 
 export async function decide(id: string, action: Decision, analyst: string) {
@@ -97,6 +131,23 @@ export async function decide(id: string, action: Decision, analyst: string) {
   if (!item || item.status !== "pending") return false;
   item.status = action === "approve" ? "patched" : "allowed";
   store.stats[action === "approve" ? "patched" : "allowed"]++;
+  const rules = store.pendingRules[id] ?? [];
+  delete store.pendingRules[id];
+  if (action === "approve") {
+    // Dynamic edge deployment: the drafted rules go live now.
+    store.deployed.unshift({
+      ruleId: item.ruleId,
+      itemId: item.id,
+      conds: rules.map((r) => r.cond),
+      rules,
+      srcIp: item.srcIp,
+      srcBlocked: item.severity >= 7,
+      analyst,
+      deployedAt: new Date().toISOString(),
+      hits: 0,
+      lastHit: null,
+    });
+  }
   await recordDecision({
     ts: new Date().toISOString(),
     analyst,
@@ -119,6 +170,7 @@ export async function snapshot(): Promise<DashboardState> {
     ledger,
     ledgerSource: source,
     traffic: store.traffic,
+    deployed: store.deployed.map((d) => ({ ...d, rules: undefined })),
     stats: store.stats,
     simOnline: now - store.lastEventAt < 5000,
     now,

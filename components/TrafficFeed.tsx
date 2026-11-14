@@ -16,14 +16,20 @@ export default function TrafficFeed({ traffic }: { traffic: TrafficEvent[] }) {
         </thead>
         <tbody>
           {traffic.map((t) => (
-            <tr key={t.seq} className={`border-b border-line/60 ${t.verdict === "sandboxed" ? "bg-red-500/5" : ""}`}>
+            <tr key={t.seq} className={`border-b border-line/60 ${t.verdict === "sandboxed" ? "bg-red-500/5" : t.verdict === "blocked" ? "bg-neon/5" : ""}`}>
               <td className={`${td} font-mono text-dim`}>{t.seq}</td>
               <td className={`${td} font-mono text-muted`}>{hhmmss(t.ts)}</td>
               <td className={`${td} font-mono`}>{t.srcIp}</td>
               <td className={`${td} font-mono`}>{t.user}</td>
               <td className={td}>{t.protocol}</td>
               <td className={`${td} font-mono text-xs font-semibold`}>
-                {t.verdict === "allowed" ? <span className="text-emerald-400">PASS → FIREWALL</span> : <span className="text-red-400">HOLD → SANDBOX</span>}
+                {t.verdict === "allowed" ? (
+                  <span className="text-emerald-400">PASS → FIREWALL</span>
+                ) : t.verdict === "blocked" ? (
+                  <span className="text-neon-hi">REFUSED · {t.ruleId}</span>
+                ) : (
+                  <span className="text-red-400">HOLD → SANDBOX</span>
+                )}
               </td>
               <td className={`${td} font-mono text-muted`}>{t.verdictMs.toFixed(2)} ms</td>
               <td className={td}>{t.verdict === "sandboxed" ? <Sev value={t.severity} /> : <span className="text-dim">—</span>}</td>

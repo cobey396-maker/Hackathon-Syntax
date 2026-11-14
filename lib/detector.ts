@@ -37,7 +37,7 @@ export function timings(p: RawPacket): Timings {
 }
 
 // A shield rule: human-readable condition + the predicate it enforces.
-type Rule = { cond: string; test: (p: RawPacket) => boolean };
+export type Rule = { cond: string; test: (p: RawPacket) => boolean };
 
 export type Baseline = { mean: number; std: number; n: number };
 

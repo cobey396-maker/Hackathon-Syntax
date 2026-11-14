@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Activity, ScrollText, Shield, ShieldAlert } from "lucide-react";
+import { Activity, RotateCcw, ScrollText, Shield, ShieldAlert } from "lucide-react";
 
 export type View = "queue" | "ledger" | "traffic";
 
@@ -18,6 +18,7 @@ export default function Sidebar({
   analyst,
   analysts,
   onAnalyst,
+  onReset,
 }: {
   view: View;
   onView: (v: View) => void;
@@ -26,7 +27,16 @@ export default function Sidebar({
   analyst: string;
   analysts: string[];
   onAnalyst: (a: string) => void;
+  onReset: () => void;
 }) {
+  // Two-step reset so a stray click mid-demo doesn't wipe the run
+  const [arm, setArm] = useState(false);
+  useEffect(() => {
+    if (!arm) return;
+    const t = setTimeout(() => setArm(false), 3000);
+    return () => clearTimeout(t);
+  }, [arm]);
+
   // UTC clock, started after mount so server and client markup match
   const [clock, setClock] = useState("--:--:--");
   useEffect(() => {
@@ -89,6 +99,20 @@ export default function Sidebar({
           </div>
           {!simOnline && <p className="mt-2 text-dim">python traffic_simulator.py</p>}
         </div>
+        <button
+          onClick={() => {
+            if (arm) {
+              setArm(false);
+              onReset();
+            } else setArm(true);
+          }}
+          className={`flex w-full items-center justify-center gap-2 border px-3 py-1.5 font-mono text-xs transition-colors ${
+            arm ? "border-red-500/70 bg-red-500/10 text-red-300" : "text-dim hover:text-ink"
+          }`}
+        >
+          <RotateCcw className="h-3 w-3" />
+          {arm ? "Click again to reset" : "Reset demo"}
+        </button>
       </div>
     </aside>
   );

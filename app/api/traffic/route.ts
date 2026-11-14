@@ -6,6 +6,10 @@ export async function POST(req: Request) {
   if (!p?.src_ip || typeof p.declared_len !== "number" || !Array.isArray(p.cipher_suites)) {
     return Response.json({ error: "bad packet" }, { status: 400 });
   }
-  const item = ingest(p);
-  return Response.json(item ? { verdict: "sandboxed", id: item.id, severity: item.severity } : { verdict: "allowed" });
+  const r = ingest(p);
+  if (r && "blocked" in r) {
+    // Refused at the edge by an approved virtual patch
+    return Response.json({ verdict: "blocked", error: "ERR_CONNECTION_REFUSED", ruleId: r.blocked.ruleId }, { status: 403 });
+  }
+  return Response.json(r ? { verdict: "sandboxed", id: r.item.id, severity: r.item.severity } : { verdict: "allowed" });
 }

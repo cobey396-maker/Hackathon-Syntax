@@ -1,4 +1,4 @@
--- Audit ledger for Virtual Patch Sandbox. Run in the Supabase SQL editor once keys exist.
+-- Audit ledger for Virtual Patch Sandbox. Run once in the Supabase SQL editor.
 -- Every analyst decision on an AI-drafted virtual patch lands here, append-only.
 
 create table if not exists public.audit_ledger (
@@ -23,3 +23,34 @@ create policy "audit ledger is readable"
   on public.audit_ledger for select
   to anon, authenticated
   using (true);
+
+-- The only write path: validates input, stamps its own timestamp, appends one row.
+-- Lets the server log decisions with the publishable key; nobody can edit or delete rows.
+create or replace function public.record_audit_decision(
+  p_analyst text,
+  p_action text,
+  p_packet_id text,
+  p_rule_id text,
+  p_severity smallint,
+  p_confidence smallint,
+  p_src_ip inet,
+  p_changes smallint
+) returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  new_id bigint;
+begin
+  if p_analyst is null or length(p_analyst) not between 1 and 80 then raise exception 'bad analyst'; end if;
+  if p_packet_id !~ '^SBX-[0-9]{4,}$' or p_rule_id !~ '^VP-[0-9]{4,}$' then raise exception 'bad ids'; end if;
+  insert into public.audit_ledger (ts, analyst, action, packet_id, rule_id, severity, confidence, src_ip, changes)
+  values (now(), p_analyst, p_action, p_packet_id, p_rule_id, p_severity, p_confidence, p_src_ip, coalesce(p_changes, 0))
+  returning id into new_id;
+  return new_id;
+end;
+$$;
+
+revoke all on function public.record_audit_decision(text, text, text, text, smallint, smallint, inet, smallint) from public;
+grant execute on function public.record_audit_decision(text, text, text, text, smallint, smallint, inet, smallint) to anon, authenticated, service_role;

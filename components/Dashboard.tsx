@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DashboardState, Decision, SandboxItem } from "@/lib/types";
 import AuditLedger from "./AuditLedger";
+import DeployedPatches from "./DeployedPatches";
 import InspectionModal from "./InspectionModal";
 import SandboxQueue from "./SandboxQueue";
 import Sidebar, { type View } from "./Sidebar";
@@ -14,7 +15,8 @@ const EMPTY: DashboardState = {
   ledger: [],
   ledgerSource: "mock",
   traffic: [],
-  stats: { seen: 0, legit: 0, sandboxed: 0, patched: 0, allowed: 0, crashesPrevented: 0, avgVerdictMs: 0 },
+  deployed: [],
+  stats: { seen: 0, legit: 0, sandboxed: 0, patched: 0, allowed: 0, crashesPrevented: 0, blockedAtEdge: 0, avgVerdictMs: 0 },
   simOnline: false,
   now: 0,
 };
@@ -85,6 +87,15 @@ export default function Dashboard() {
     setBusy(false);
   };
 
+  const resetDemo = async () => {
+    const r = await fetch("/api/reset", { method: "POST" });
+    if (!r.ok) return;
+    setOpenId(null);
+    setToast(null);
+    seen.current = new Set();
+    setState(await r.json());
+  };
+
   const open = state.items.find((i) => i.id === openId);
   const pending = state.items.filter((i) => i.status === "pending").length;
   const s = state.stats;
@@ -95,16 +106,17 @@ export default function Dashboard() {
     ["Pending review", String(pending), pending ? "text-amber-300" : undefined],
     ["Patches approved", String(s.patched), "text-neon-hi"],
     ["Overrides", String(s.allowed)],
+    ["Refused at edge", String(s.blockedAtEdge), "text-neon-hi"],
     ["Crashes prevented", String(s.crashesPrevented), "text-cisco"],
     ["Avg AI verdict", `${s.avgVerdictMs.toFixed(2)} ms`, "text-cisco"],
   ];
 
   return (
     <div className="h-full">
-      <Sidebar view={view} onView={setView} pending={pending} simOnline={state.simOnline} analyst={analyst} analysts={ANALYSTS} onAnalyst={pickAnalyst} />
+      <Sidebar view={view} onView={setView} pending={pending} simOnline={state.simOnline} analyst={analyst} analysts={ANALYSTS} onAnalyst={pickAnalyst} onReset={resetDemo} />
 
       <main className="flex h-full flex-col gap-px overflow-auto bg-line pl-64">
-        <div className="grid shrink-0 grid-cols-4 bg-panel lg:grid-cols-8">
+        <div className="grid shrink-0 grid-cols-4 bg-panel lg:grid-cols-9">
           {kpis.map(([label, value, color]) => (
             <div key={label} className="border-r border-b px-4 py-2.5 last:border-r-0">
               <p className="text-xs tracking-wider text-dim uppercase">{label}</p>
@@ -117,13 +129,14 @@ export default function Dashboard() {
           <>
             <Topology traffic={state.traffic} stats={state.stats} now={state.now} />
             <SandboxQueue items={state.items} now={state.now} onOpen={setOpenId} />
+            <DeployedPatches deployed={state.deployed} now={state.now} />
           </>
         )}
         {view === "ledger" && <AuditLedger ledger={state.ledger} source={state.ledgerSource} />}
         {view === "traffic" && <TrafficFeed traffic={state.traffic} />}
       </main>
 
-      {open && <InspectionModal key={open.id} item={open} ledger={state.ledger} analyst={analyst} busy={busy} onClose={() => setOpenId(null)} onDecide={decide} />}
+      {open && <InspectionModal key={open.id} item={open} ledger={state.ledger} patch={state.deployed.find((d) => d.itemId === open.id)} analyst={analyst} busy={busy} onClose={() => setOpenId(null)} onDecide={decide} />}
 
       {toast && !open && (
         <div className="fixed right-5 bottom-5 z-40 flex items-center gap-4 border border-red-500/60 bg-panel px-4 py-3 shadow-2xl animate-in slide-in-from-bottom-4">

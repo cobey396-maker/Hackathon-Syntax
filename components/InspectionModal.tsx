@@ -3,7 +3,7 @@
 // honeypot terminal, drafted virtual patch, and the human oversight controls.
 import { useEffect, useState } from "react";
 import { Check as CheckIcon, X } from "lucide-react";
-import type { Check, Decision, LedgerEntry, SandboxItem } from "@/lib/types";
+import type { Check, Decision, DeployedPatch, LedgerEntry, SandboxItem } from "@/lib/types";
 import HoneypotTerminal from "./HoneypotTerminal";
 import { Confidence, hhmmss, Sev, sevText, StatusPill, td, th } from "./soc";
 
@@ -19,6 +19,7 @@ function hexClass(i: number, checks: Check[], shownChecks: number, hover: number
 export default function InspectionModal({
   item,
   ledger,
+  patch,
   analyst,
   busy,
   onClose,
@@ -26,6 +27,7 @@ export default function InspectionModal({
 }: {
   item: SandboxItem;
   ledger: LedgerEntry[];
+  patch?: DeployedPatch;
   analyst: string;
   busy: boolean;
   onClose: () => void;
@@ -195,7 +197,7 @@ export default function InspectionModal({
             </div>
 
             <div>
-              {label(`Drafted virtual patch · ${item.ruleId}`, `${item.plan.length} changes · ${item.status === "patched" ? "applied" : item.status === "allowed" ? "discarded" : "not applied"}`)}
+              {label(`Drafted virtual patch · ${item.ruleId}`, `${item.plan.length} changes · ${item.status === "patched" ? "live at edge" : item.status === "allowed" ? "discarded" : "not applied"}`)}
               <pre className="min-h-24 border bg-bg py-2 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap">
                 {item.plan.slice(0, planShown).map((l) => (
                   <div key={l.cmd} className="px-3 animate-in fade-in-0">
@@ -257,8 +259,14 @@ export default function InspectionModal({
             </>
           ) : (
             <p className="font-mono text-xs text-muted">
-              {item.status === "patched" ? <span className="text-neon-hi">PATCH APPLIED</span> : <span>OVERRIDDEN · packet released</span>}
+              {item.status === "patched" ? <span className="text-neon-hi">PATCH DEPLOYED TO EDGE</span> : <span>OVERRIDDEN · packet released</span>}
               {decision && ` · ${decision.analyst} · ${decision.ts.slice(11, 19)} UTC · ${decision.id}`}
+              {patch && (
+                <span className="ml-3 text-ink">
+                  {patch.hits} repeat attempt{patch.hits === 1 ? "" : "s"} refused
+                  {patch.lastHit && <span className="text-muted"> · last {patch.lastHit.slice(11, 19)} UTC</span>}
+                </span>
+              )}
             </p>
           )}
         </footer>

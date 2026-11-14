@@ -7,9 +7,11 @@ import { Pane } from "./soc";
 
 const CLEAN = "M150 40 L830 40";
 const THREAT = "M150 40 L440 40 Q490 40 490 90";
+const REFUSED = "M150 40 L284 40"; // stopped at the shield by a deployed patch
 
 function Dot({ ev, now }: { ev: TrafficEvent; now: number }) {
   const threat = ev.verdict === "sandboxed";
+  const refused = ev.verdict === "blocked";
   // replay real arrival spacing, ~1.5 s behind the wire; captured once at mount
   const [delay] = useState(() => Math.max(0, 1.5 - (now - Date.parse(ev.ts)) / 1000));
   const motion = useRef<SVGAnimateMotionElement>(null);
@@ -18,10 +20,10 @@ function Dot({ ev, now }: { ev: TrafficEvent; now: number }) {
     motion.current?.beginElementAt(delay);
     fade.current?.beginElementAt(delay);
   }, [delay]);
-  const dur = threat ? "1.1s" : "1.6s";
+  const dur = threat ? "1.1s" : refused ? "0.7s" : "1.6s";
   return (
-    <circle r={threat ? 5 : 3.5} fill={threat ? "#f87171" : "#049fd9"} opacity="0">
-      <animateMotion ref={motion} begin="indefinite" dur={dur} path={threat ? THREAT : CLEAN} fill="freeze" />
+    <circle r={threat || refused ? 5 : 3.5} fill={threat ? "#f87171" : refused ? "#c858ff" : "#049fd9"} opacity="0">
+      <animateMotion ref={motion} begin="indefinite" dur={dur} path={threat ? THREAT : refused ? REFUSED : CLEAN} fill="freeze" />
       <animate ref={fade} attributeName="opacity" begin="indefinite" dur={dur} values="1;1;0.9;0" keyTimes="0;0.1;0.9;1" fill="freeze" />
     </circle>
   );
@@ -42,6 +44,7 @@ function Box({ x, y = 18, w = 130, h = 44, label, sub, stroke = "#1e2330", accen
 export default function Topology({ traffic, stats, now }: { traffic: TrafficEvent[]; stats: Stats; now: number }) {
   const live = traffic.filter((e) => now - Date.parse(e.ts) < 3000);
   const hit = traffic.find((e) => e.verdict === "sandboxed" && now - Date.parse(e.ts) < 2500);
+  const refused = traffic.find((e) => e.verdict === "blocked" && now - Date.parse(e.ts) < 2500);
 
   return (
     <Pane
@@ -50,6 +53,7 @@ export default function Topology({ traffic, stats, now }: { traffic: TrafficEven
         <>
           <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-cisco" />clean</span>
           <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />held</span>
+          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-neon-hi" />refused by patch</span>
         </>
       }
       className="shrink-0"
@@ -66,8 +70,8 @@ export default function Topology({ traffic, stats, now }: { traffic: TrafficEven
         <Box
           x={290}
           label="AI SHIELD"
-          sub={`inline · ${stats.avgVerdictMs.toFixed(2)} ms`}
-          stroke={hit ? "#f87171" : "#049fd9"}
+          sub={refused ? `REFUSED · ${refused.ruleId}` : `inline · ${stats.avgVerdictMs.toFixed(2)} ms`}
+          stroke={refused ? "#c858ff" : hit ? "#f87171" : "#049fd9"}
           accent="#049fd9"
         />
         <Box x={560} label="FIREWALL" sub={`ASA/FTD · ${stats.crashesPrevented} crashes avoided`} w={150} />

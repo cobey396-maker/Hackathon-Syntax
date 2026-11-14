@@ -5,29 +5,32 @@ import type { LedgerEntry } from "./types";
 
 export type LedgerSource = "supabase" | "mock";
 
-const g = globalThis as unknown as { __vpsLedger?: LedgerEntry[] };
+const g = globalThis as unknown as { __vpsLedger?: LedgerEntry[]; __vpsLedgerSince?: string };
 const mem: LedgerEntry[] = (g.__vpsLedger ??= []);
+
+// Demo reset: clear the in-memory ledger and hide older Supabase rows from the dashboard.
+// Supabase rows are never deleted (the table is append-only).
+export function resetLedgerView() {
+  mem.length = 0;
+  g.__vpsLedgerSince = new Date().toISOString();
+}
 
 const fmtId = (n: number) => `AUD-${String(n).padStart(4, "0")}`;
 
 export async function recordDecision(e: Omit<LedgerEntry, "id">): Promise<LedgerEntry> {
   if (supabase) {
-    const { data, error } = await supabase
-      .from("audit_ledger")
-      .insert({
-        ts: e.ts,
-        analyst: e.analyst,
-        action: e.action,
-        packet_id: e.itemId,
-        rule_id: e.ruleId,
-        severity: e.severity,
-        confidence: e.confidence,
-        src_ip: e.srcIp,
-        changes: e.changes,
-      })
-      .select("id")
-      .single();
-    if (!error && data) return { ...e, id: fmtId(data.id) };
+    // Append-only RPC: the table itself accepts no direct writes from client keys
+    const { data, error } = await supabase.rpc("record_audit_decision", {
+      p_analyst: e.analyst,
+      p_action: e.action,
+      p_packet_id: e.itemId,
+      p_rule_id: e.ruleId,
+      p_severity: e.severity,
+      p_confidence: e.confidence,
+      p_src_ip: e.srcIp,
+      p_changes: e.changes,
+    });
+    if (!error && typeof data === "number") return { ...e, id: fmtId(data) };
     console.error("audit_ledger insert failed, falling back to memory:", error?.message);
   }
   const entry = { ...e, id: fmtId(mem.length + 1) };
@@ -37,7 +40,9 @@ export async function recordDecision(e: Omit<LedgerEntry, "id">): Promise<Ledger
 
 export async function listLedger(): Promise<{ ledger: LedgerEntry[]; source: LedgerSource }> {
   if (supabase) {
-    const { data, error } = await supabase.from("audit_ledger").select("*").order("ts", { ascending: false }).limit(200);
+    let q = supabase.from("audit_ledger").select("*");
+    if (g.__vpsLedgerSince) q = q.gte("ts", g.__vpsLedgerSince);
+    const { data, error } = await q.order("ts", { ascending: false }).limit(200);
     if (!error && data) {
       return {
         source: "supabase",

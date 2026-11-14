@@ -68,9 +68,23 @@ export type TrafficEvent = {
   srcIp: string;
   user: string;
   protocol: string;
-  verdict: "allowed" | "sandboxed";
+  verdict: "allowed" | "sandboxed" | "blocked";
   severity: number;
   verdictMs: number;
+  ruleId?: string; // deployed patch that refused it (verdict "blocked")
+};
+
+// A virtual patch an analyst approved; enforced at the edge before the AI runs.
+export type DeployedPatch = {
+  ruleId: string;
+  itemId: string;
+  conds: string[]; // shield-rule conditions
+  srcIp: string;
+  srcBlocked: boolean; // acl deny on the source (severity >= 7)
+  analyst: string;
+  deployedAt: string;
+  hits: number;
+  lastHit: string | null;
 };
 
 export type Stats = {
@@ -80,6 +94,7 @@ export type Stats = {
   patched: number;
   allowed: number;
   crashesPrevented: number;
+  blockedAtEdge: number;
   avgVerdictMs: number;
 };
 
@@ -88,6 +103,7 @@ export type DashboardState = {
   ledger: LedgerEntry[];
   ledgerSource: "supabase" | "mock";
   traffic: TrafficEvent[];
+  deployed: DeployedPatch[];
   stats: Stats;
   simOnline: boolean;
   now: number;
