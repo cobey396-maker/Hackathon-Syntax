@@ -1,35 +1,35 @@
 "use client";
-// Live inline topology: each handshake is a dot. Clean ones pass the AI Shield and the
-// firewall into the LAN; threats are diverted at the shield into the sandbox.
-import { useEffect, useRef, useState } from "react";
-import type { Stats, TrafficEvent } from "@/lib/types";
+// Packet path diagram. Each new traffic record animates once along the path its verdict took:
+// blocked at the virtual firewall, flagged into the sandbox, or allowed through to the gateway.
+import { useEffect, useRef } from "react";
+import { counts } from "@/lib/simulation/selectors";
+import type { TrafficRecord } from "@/lib/simulation/types";
+import { useSimulation } from "./simulation/SimulationProvider";
 import { Pane } from "./soc";
 
-const CLEAN = "M150 40 L830 40";
-const THREAT = "M150 40 L440 40 Q490 40 490 90";
+const PATHS = {
+  ALLOWED: "M150 40 L830 40",
+  BLOCKED: "M150 40 L285 40",
+  FLAGGED: "M150 40 L490 40 Q540 40 540 90",
+};
+const COLOR = { ALLOWED: "#049fd9", BLOCKED: "#c858ff", FLAGGED: "#f87171" };
 
-function Dot({ ev, now }: { ev: TrafficEvent; now: number }) {
-  const threat = ev.verdict === "sandboxed";
-  // replay real arrival spacing, ~1.5 s behind the wire; captured once at mount
-  const [delay] = useState(() => Math.max(0, 1.5 - (now - Date.parse(ev.ts)) / 1000));
+function Dot({ t }: { t: TrafficRecord }) {
   const motion = useRef<SVGAnimateMotionElement>(null);
   const fade = useRef<SVGAnimateElement>(null);
   useEffect(() => {
-    motion.current?.beginElementAt(delay);
-    fade.current?.beginElementAt(delay);
-  }, [delay]);
-  const dur = threat ? "1.1s" : "1.6s";
+    motion.current?.beginElement();
+    fade.current?.beginElement();
+  }, []);
   return (
-    <circle r={threat ? 5 : 3.5} fill={threat ? "#f87171" : "#049fd9"} opacity="0">
-      <animateMotion ref={motion} begin="indefinite" dur={dur} path={threat ? THREAT : CLEAN} fill="freeze" />
-      <animate ref={fade} attributeName="opacity" begin="indefinite" dur={dur} values="1;1;0.9;0" keyTimes="0;0.1;0.9;1" fill="freeze" />
+    <circle r={t.verdict === "ALLOWED" ? 4 : 5.5} fill={COLOR[t.verdict]} opacity="0">
+      <animateMotion ref={motion} begin="indefinite" dur="1.3s" path={PATHS[t.verdict]} fill="freeze" />
+      <animate ref={fade} attributeName="opacity" begin="indefinite" dur="1.3s" values="1;1;0.9;0" keyTimes="0;0.1;0.9;1" fill="freeze" />
     </circle>
   );
 }
 
-function Box({ x, y = 18, w = 130, h = 44, label, sub, stroke = "#1e2330", accent = "#f3f4f6" }: {
-  x: number; y?: number; w?: number; h?: number; label: string; sub: string; stroke?: string; accent?: string;
-}) {
+function Box({ x, y = 18, w = 135, h = 44, label, sub, stroke = "#1e2330", accent = "#f3f4f6" }: { x: number; y?: number; w?: number; h?: number; label: string; sub: string; stroke?: string; accent?: string }) {
   return (
     <g>
       <rect x={x} y={y} width={w} height={h} fill="#11141b" stroke={stroke} strokeWidth="1.25" />
@@ -39,40 +39,32 @@ function Box({ x, y = 18, w = 130, h = 44, label, sub, stroke = "#1e2330", accen
   );
 }
 
-export default function Topology({ traffic, stats, now }: { traffic: TrafficEvent[]; stats: Stats; now: number }) {
-  const live = traffic.filter((e) => now - Date.parse(e.ts) < 3000);
-  const hit = traffic.find((e) => e.verdict === "sandboxed" && now - Date.parse(e.ts) < 2500);
-
+export default function Topology() {
+  const { state } = useSimulation();
+  const c = counts(state);
   return (
     <Pane
-      title="Inline packet path"
+      title="Synthetic packet path"
       meta={
         <>
-          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-cisco" />clean</span>
-          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />held</span>
+          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-cisco" />allowed</span>
+          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-neon-hi" />blocked by policy</span>
+          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />flagged</span>
         </>
       }
       className="shrink-0"
     >
-      <svg viewBox="0 0 1000 132" className="h-36 w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Packet path: internet, AI Shield, firewall, LAN; threats diverted to sandbox">
-        {/* wires */}
-        <path d={CLEAN} stroke="#1e2330" strokeWidth="2" fill="none" />
-        <path d="M420 40 L440 40 Q490 40 490 90" stroke="#3b1d1d" strokeWidth="2" strokeDasharray="4 4" fill="none" />
-        <text x="505" y="70" fill="#5b6476" fontSize="10" fontFamily="var(--font-mono)">divert</text>
-
-        {live.map((e) => <Dot key={e.seq} ev={e} now={now} />)}
-
-        <Box x={20} label="INTERNET" sub={`${stats.seen} handshakes`} />
-        <Box
-          x={290}
-          label="AI SHIELD"
-          sub={`inline · ${stats.avgVerdictMs.toFixed(2)} ms`}
-          stroke={hit ? "#f87171" : "#049fd9"}
-          accent="#049fd9"
-        />
-        <Box x={560} label="FIREWALL" sub={`ASA/FTD · ${stats.crashesPrevented} crashes avoided`} w={150} />
-        <Box x={830} label="LAN" sub={`${stats.legit} sessions`} />
-        <Box x={425} y={90} h={38} w={150} label="SANDBOX" sub={`${stats.sandboxed} held`} stroke="#5b2a2a" accent="#f87171" />
+      <svg viewBox="0 0 1000 132" className="h-36 w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Packet path: internet, virtual firewall, detector, VPN gateway; flagged packets diverted to sandbox">
+        <path d={PATHS.ALLOWED} stroke="#1e2330" strokeWidth="2" fill="none" />
+        <path d="M470 40 L490 40 Q540 40 540 90" stroke="#3b1d1d" strokeWidth="2" strokeDasharray="4 4" fill="none" />
+        {state.traffic.slice(0, 6).map((t) => (
+          <Dot key={t.packetId} t={t} />
+        ))}
+        <Box x={20} label="SYNTHETIC SRC" sub={`${c.analyzed} packets`} />
+        <Box x={285} label="VIRTUAL FW" sub={`${state.firewall.rules.length} rules · ${state.firewall.quarantined.length} quar.`} stroke="#5b2a7a" accent="#c858ff" />
+        <Box x={560} label="DETECTOR" sub={`${c.detected} flagged`} stroke="#049fd9" accent="#049fd9" w={130} />
+        <Box x={830} label="VPN GATEWAY" sub={`${c.allowed} allowed`} />
+        <Box x={465} y={90} h={38} w={150} label="SANDBOX" sub={`${c.open} open incidents`} stroke="#5b2a2a" accent="#f87171" />
       </svg>
     </Pane>
   );

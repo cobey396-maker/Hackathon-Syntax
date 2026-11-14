@@ -1,59 +1,55 @@
-// Shared console primitives: panes, severity colouring, status labels.
-import type { Status } from "@/lib/types";
+// Shared console primitives: panes, risk colouring, status labels.
+import type { Containment, IncidentStatus, RiskLevel } from "@/lib/simulation/types";
+import { tickToIso } from "@/lib/simulation/engine";
 
-export const hhmmss = (iso: string) => iso.slice(11, 19);
+export const simTime = (tick: number) => tickToIso(tick).slice(11, 19);
 
-export function sevText(s: number) {
-  if (s >= 9) return "text-red-400";
-  if (s >= 7) return "text-orange-400";
-  if (s >= 4) return "text-amber-300";
-  return "text-slate-300";
-}
-
-export function sevFill(s: number) {
-  if (s >= 9) return "bg-red-500";
-  if (s >= 7) return "bg-orange-500";
-  if (s >= 4) return "bg-amber-400";
-  return "bg-slate-400";
-}
-
-// "07" in severity colour, optionally with a 10-segment micro bar
-export function Sev({ value, bar = false, num = true }: { value: number; bar?: boolean; num?: boolean }) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      {num && <span className={`font-mono text-sm font-semibold tabular-nums ${sevText(value)}`}>{String(value).padStart(2, "0")}</span>}
-      {bar && (
-        <span className="flex gap-px">
-          {Array.from({ length: 10 }, (_, i) => (
-            <span key={i} className={`h-2.5 w-1 ${i < value ? sevFill(value) : "bg-line"}`} />
-          ))}
-        </span>
-      )}
-    </span>
-  );
-}
-
-// Cisco-blue confidence bar + percentage
-export function Confidence({ value }: { value: number }) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className="h-1.5 w-16 bg-line">
-        <span className="block h-1.5 bg-cisco" style={{ width: `${value}%` }} />
-      </span>
-      <span className="font-mono text-sm tabular-nums">{value}%</span>
-    </span>
-  );
-}
-
-const STATUS: Record<Status, [string, string]> = {
-  pending: ["Pending Review", "bg-amber-500/15 text-amber-300"],
-  patched: ["Patched", "bg-neon/15 text-neon-hi"],
-  allowed: ["Overridden", "bg-panel-2 text-muted"],
+const RISK: Record<RiskLevel, string> = {
+  CRITICAL: "border-red-500/60 text-red-300",
+  HIGH: "border-orange-500/60 text-orange-300",
+  MEDIUM: "border-amber-400/60 text-amber-200",
+  LOW: "border-slate-500/60 text-slate-300",
 };
 
-export function StatusPill({ status }: { status: Status }) {
+/** Risk as text + score (never colour alone). */
+export function Risk({ level, score }: { level: RiskLevel; score?: number }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 border px-1.5 py-0.5 font-mono text-xs font-semibold ${RISK[level]}`}>
+      {level}
+      {score !== undefined && <span className="font-normal opacity-80">{score}/10</span>}
+    </span>
+  );
+}
+
+const STATUS: Record<IncidentStatus, [string, string]> = {
+  DETECTED: ["Detected", "bg-red-500/15 text-red-300"],
+  CONTAINED: ["Contained", "bg-orange-500/15 text-orange-300"],
+  SIMULATED: ["Simulated", "bg-cisco/15 text-cisco"],
+  ANALYZED: ["Analyzed", "bg-cisco/15 text-cisco"],
+  PROPOSED: ["Proposed", "bg-cisco/15 text-cisco"],
+  AWAITING_REVIEW: ["Awaiting Review", "bg-amber-500/15 text-amber-300"],
+  ENFORCED: ["Enforced", "bg-neon/15 text-neon-hi"],
+  VERIFIED: ["Verified", "bg-emerald-500/15 text-emerald-300"],
+  BENIGN: ["Benign", "bg-emerald-500/10 text-emerald-300"],
+  INCONCLUSIVE: ["Inconclusive", "bg-slate-500/15 text-slate-300"],
+  REJECTED: ["Rejected", "bg-panel-2 text-muted"],
+  VERIFY_FAILED: ["Verify Failed", "bg-red-500/15 text-red-300"],
+  ROLLED_BACK: ["Rolled Back", "bg-amber-500/15 text-amber-200"],
+  ROLLBACK_FAILED: ["Rollback Failed", "bg-red-600/25 text-red-200"],
+};
+
+export function StatusPill({ status }: { status: IncidentStatus }) {
   const [label, cls] = STATUS[status];
-  return <span className={`inline-block px-2 py-0.5 font-mono text-xs font-semibold ${cls}`}>{label}</span>;
+  return <span className={`inline-block px-2 py-0.5 font-mono text-xs font-semibold whitespace-nowrap ${cls}`}>{label}</span>;
+}
+
+export function ContainmentPill({ c }: { c: Containment }) {
+  if (c === "NONE") return <span className="font-mono text-xs text-dim">—</span>;
+  return c === "QUARANTINED" ? (
+    <span className="font-mono text-xs font-semibold text-orange-300">◼ QUARANTINED</span>
+  ) : (
+    <span className="font-mono text-xs text-muted">○ released</span>
+  );
 }
 
 export function Pane({

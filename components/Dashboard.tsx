@@ -1,107 +1,47 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import type { DashboardState, Decision, SandboxItem } from "@/lib/types";
+import { useState } from "react";
+import { RotateCcw, Send } from "lucide-react";
+import { reduce } from "@/lib/simulation/engine";
+import { SCENARIOS } from "@/lib/simulation/scenarios";
+import { counts } from "@/lib/simulation/selectors";
 import AuditLedger from "./AuditLedger";
-import InspectionModal from "./InspectionModal";
+import FirewallView from "./FirewallView";
+import IncidentPanel from "./IncidentPanel";
 import SandboxQueue from "./SandboxQueue";
 import Sidebar, { type View } from "./Sidebar";
+import { SimulationProvider, useSimulation } from "./simulation/SimulationProvider";
 import Topology from "./Topology";
 import TrafficFeed from "./TrafficFeed";
 
-const ANALYSTS = ["J. Rivera · Tier 2", "A. Chen · Tier 3", "M. Okafor · SOC Lead"];
-const EMPTY: DashboardState = {
-  items: [],
-  ledger: [],
-  ledgerSource: "mock",
-  traffic: [],
-  stats: { seen: 0, legit: 0, sandboxed: 0, patched: 0, allowed: 0, crashesPrevented: 0, avgVerdictMs: 0 },
-  simOnline: false,
-  now: 0,
-};
-
-export default function Dashboard() {
-  const [state, setState] = useState<DashboardState>(EMPTY);
+function Console() {
+  const { state, dispatch } = useSimulation();
   const [view, setView] = useState<View>("queue");
   const [openId, setOpenId] = useState<string | null>(null);
-  const [toast, setToast] = useState<SandboxItem | null>(null);
-  const [analyst, setAnalyst] = useState(ANALYSTS[0]);
-  const [busy, setBusy] = useState(false);
-  const seen = useRef<Set<string> | null>(null);
+  const c = counts(state);
 
-  // Poll the API the simulator posts into; toast when a new zero-day lands
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
-      fetch("/api/state", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((s: DashboardState) => {
-          if (!alive) return;
-          setState(s);
-          if (seen.current) {
-            const fresh = s.items.find((i) => !seen.current!.has(i.id));
-            if (fresh) setToast(fresh);
-          }
-          seen.current = new Set(s.items.map((i) => i.id));
-        })
-        .catch(() => {});
-    load();
-    const t = setInterval(load, 1500);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 8000);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  // Remember the analyst between reloads (read after mount to stay hydration-safe)
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("vps-analyst");
-      if (saved && ANALYSTS.includes(saved)) queueMicrotask(() => setAnalyst(saved));
-    } catch {}
-  }, []);
-
-  const pickAnalyst = (a: string) => {
-    setAnalyst(a);
-    try {
-      localStorage.setItem("vps-analyst", a);
-    } catch {}
+  const launch = (id: string) => {
+    const sc = SCENARIOS.find((s) => s.id === id)!;
+    const action = { type: "INGEST", packet: sc.packet, scenarioId: sc.id } as const;
+    // The reducer is pure, so previewing it tells us whether this packet opens an incident.
+    const preview = reduce(state, action);
+    dispatch(action);
+    if (preview.incidents.length > state.incidents.length) setOpenId(preview.incidents[0].id);
   };
 
-  const decide = async (action: Decision) => {
-    if (!openId) return;
-    setBusy(true);
-    const r = await fetch("/api/decision", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: openId, action, analyst }),
-    });
-    if (r.ok) setState(await r.json());
-    setBusy(false);
-  };
-
-  const open = state.items.find((i) => i.id === openId);
-  const pending = state.items.filter((i) => i.status === "pending").length;
-  const s = state.stats;
-  const kpis: [string, string, string?][] = [
-    ["Inspected", s.seen.toLocaleString("en-US")],
-    ["Clean → firewall", s.legit.toLocaleString("en-US"), "text-emerald-400"],
-    ["Held in sandbox", String(s.sandboxed), "text-red-400"],
-    ["Pending review", String(pending), pending ? "text-amber-300" : undefined],
-    ["Patches approved", String(s.patched), "text-neon-hi"],
-    ["Overrides", String(s.allowed)],
-    ["Crashes prevented", String(s.crashesPrevented), "text-cisco"],
-    ["Avg AI verdict", `${s.avgVerdictMs.toFixed(2)} ms`, "text-cisco"],
+  const kpis: [string, number, string?][] = [
+    ["Packets analyzed", c.analyzed],
+    ["Allowed", c.allowed, "text-emerald-400"],
+    ["Blocked by policy", c.blocked, "text-neon-hi"],
+    ["Incidents", c.detected, "text-red-400"],
+    ["Active quarantines", c.quarantined, c.quarantined ? "text-orange-300" : undefined],
+    ["Awaiting review", c.awaitingReview, c.awaitingReview ? "text-amber-300" : undefined],
+    ["Verified patches", c.verified, "text-emerald-300"],
+    ["Rolled back", c.rolledBack, c.rolledBack ? "text-amber-200" : undefined],
   ];
 
   return (
     <div className="h-full">
-      <Sidebar view={view} onView={setView} pending={pending} simOnline={state.simOnline} analyst={analyst} analysts={ANALYSTS} onAnalyst={pickAnalyst} />
+      <Sidebar view={view} onView={setView} pending={c.awaitingReview} />
 
       <main className="flex h-full flex-col gap-px overflow-auto bg-line pl-64">
         <div className="grid shrink-0 grid-cols-4 bg-panel lg:grid-cols-8">
@@ -113,39 +53,42 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {view === "queue" && (
-          <>
-            <Topology traffic={state.traffic} stats={state.stats} now={state.now} />
-            <SandboxQueue items={state.items} now={state.now} onOpen={setOpenId} />
-          </>
-        )}
-        {view === "ledger" && <AuditLedger ledger={state.ledger} source={state.ledgerSource} />}
-        {view === "traffic" && <TrafficFeed traffic={state.traffic} />}
-      </main>
-
-      {open && <InspectionModal key={open.id} item={open} ledger={state.ledger} analyst={analyst} busy={busy} onClose={() => setOpenId(null)} onDecide={decide} />}
-
-      {toast && !open && (
-        <div className="fixed right-5 bottom-5 z-40 flex items-center gap-4 border border-red-500/60 bg-panel px-4 py-3 shadow-2xl animate-in slide-in-from-bottom-4">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-          <div className="text-sm">
-            <p className="font-semibold">Zero-day held in sandbox</p>
-            <p className="font-mono text-xs text-muted">
-              {toast.id} · {toast.srcIp} · severity {toast.severity}/10 · {toast.confidence}%
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setView("queue");
-              setOpenId(toast.id);
-              setToast(null);
-            }}
-            className="bg-neon px-3 py-1.5 text-sm font-semibold text-white hover:bg-neon-hi"
-          >
-            Inspect
+        {/* Phase 1 scenario launcher: every button sends a fixed synthetic packet through the engine. */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 bg-panel px-4 py-3">
+          <span className="mr-2 text-xs font-semibold tracking-wider text-dim uppercase">Launch scenario</span>
+          {SCENARIOS.map((s) => (
+            <button key={s.id} onClick={() => launch(s.id)} title={s.summary} className="flex items-center gap-1.5 border px-2.5 py-1.5 text-xs text-muted hover:border-neon hover:text-ink">
+              <Send className="h-3 w-3" />
+              {s.name}
+            </button>
+          ))}
+          <button onClick={() => { setOpenId(null); dispatch({ type: "RESET" }); }} className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-dim hover:text-ink">
+            <RotateCcw className="h-3 w-3" /> Reset simulation
           </button>
         </div>
-      )}
+
+        {state.lastError && !openId && <p className="shrink-0 bg-red-500/10 px-4 py-2 font-mono text-xs text-red-300">Engine refused: {state.lastError}</p>}
+
+        {view === "queue" && (
+          <>
+            <Topology />
+            <SandboxQueue onOpen={setOpenId} />
+          </>
+        )}
+        {view === "firewall" && <FirewallView />}
+        {view === "ledger" && <AuditLedger />}
+        {view === "traffic" && <TrafficFeed />}
+      </main>
+
+      {openId && <IncidentPanel id={openId} onClose={() => setOpenId(null)} />}
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <SimulationProvider>
+      <Console />
+    </SimulationProvider>
   );
 }

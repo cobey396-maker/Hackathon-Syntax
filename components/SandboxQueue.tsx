@@ -1,21 +1,20 @@
-import type { SandboxItem } from "@/lib/types";
-import { Confidence, hhmmss, Pane, Sev, StatusPill, td, th } from "./soc";
+"use client";
+import { useSimulation } from "./simulation/SimulationProvider";
+import { ContainmentPill, Pane, Risk, simTime, StatusPill, td, th } from "./soc";
 
-export default function SandboxQueue({ items, now, onOpen }: { items: SandboxItem[]; now: number; onOpen: (id: string) => void }) {
-  // Pending first, newest first
-  const rows = [...items].sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending") || b.ts.localeCompare(a.ts));
+export default function SandboxQueue({ onOpen }: { onOpen: (id: string) => void }) {
+  const { state } = useSimulation();
+  const rows = state.incidents;
 
   return (
-    <Pane title="Active Sandbox Queue" meta={<span>{rows.length} intercepted · click a row to inspect</span>} className="flex-1">
+    <Pane title="Threat Queue" meta={<span>{rows.length} incidents · click a row to investigate</span>} className="flex-1">
       {rows.length === 0 ? (
-        <p className="p-8 text-center text-sm text-muted">
-          No packets held. In the simulator terminal, press <kbd className="border bg-bg px-1.5 font-mono text-ink">z</kbd> to inject a zero-day handshake.
-        </p>
+        <p className="p-8 text-center text-sm text-muted">No incidents yet. Launch a scenario above to send synthetic traffic through the detector.</p>
       ) : (
         <table className="w-full">
           <thead>
             <tr>
-              {["Timestamp", "ID", "Source IP", "Packet Type", "Threat Confidence", "Severity", "Status"].map((h) => (
+              {["Sim time", "Incident", "Packet", "Source", "Protocol", "Risk", "Status", "Containment"].map((h) => (
                 <th key={h} className={th}>
                   {h}
                 </th>
@@ -24,28 +23,28 @@ export default function SandboxQueue({ items, now, onOpen }: { items: SandboxIte
           </thead>
           <tbody>
             {rows.map((i) => {
-              const fresh = i.status === "pending" && now - Date.parse(i.ts) < 6000;
+              const p = state.packets[i.packetId];
               return (
                 <tr
                   key={i.id}
+                  tabIndex={0}
                   onClick={() => onOpen(i.id)}
-                  className={`cursor-pointer border-b border-line/60 transition-colors hover:bg-neon/5 ${fresh ? "animate-pulse bg-red-500/10" : ""}`}
+                  onKeyDown={(e) => e.key === "Enter" && onOpen(i.id)}
+                  className="cursor-pointer border-b border-line/60 transition-colors hover:bg-neon/5 focus:bg-neon/10 focus:outline-none"
                 >
-                  <td className={`${td} font-mono text-muted`}>
-                    {hhmmss(i.ts)}
-                    {fresh && <span className="ml-2 bg-red-500 px-1 font-mono text-xs font-bold text-white">NEW</span>}
-                  </td>
+                  <td className={`${td} font-mono text-muted`}>{simTime(i.createdTick)}</td>
                   <td className={`${td} font-mono`}>{i.id}</td>
-                  <td className={`${td} font-mono`}>{i.srcIp}</td>
-                  <td className={td}>{i.protocol} handshake</td>
+                  <td className={`${td} font-mono text-muted`}>{p.id}</td>
+                  <td className={`${td} font-mono`}>{p.srcIp}</td>
+                  <td className={td}>{p.protocol}</td>
                   <td className={td}>
-                    <Confidence value={i.confidence} />
-                  </td>
-                  <td className={td}>
-                    <Sev value={i.severity} bar />
+                    <Risk level={i.detection.risk} score={i.detection.score} />
                   </td>
                   <td className={td}>
                     <StatusPill status={i.status} />
+                  </td>
+                  <td className={td}>
+                    <ContainmentPill c={i.containment} />
                   </td>
                 </tr>
               );

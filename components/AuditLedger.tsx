@@ -1,52 +1,47 @@
-import type { LedgerSource } from "@/lib/audit";
-import type { LedgerEntry } from "@/lib/types";
-import { Pane, Sev, td, th } from "./soc";
+"use client";
+import type { AuditEvent } from "@/lib/simulation/types";
+import { useSimulation } from "./simulation/SimulationProvider";
+import { Pane, simTime, td, th } from "./soc";
 
-export default function AuditLedger({ ledger, source }: { ledger: LedgerEntry[]; source: LedgerSource }) {
+const OUTCOME: Record<AuditEvent["outcome"], string> = { ok: "text-emerald-400", warn: "text-amber-300", fail: "text-red-400" };
+
+export function EventRows({ events }: { events: AuditEvent[] }) {
   return (
-    <Pane
-      title="Audit Ledger"
-      className="flex-1"
-      meta={
-        <>
-          <span>append-only · {ledger.length} entries</span>
-          <span className={source === "supabase" ? "text-emerald-400" : "text-amber-300"}>source: {source}</span>
-        </>
-      }
-    >
-      {ledger.length === 0 ? (
-        <p className="p-8 text-center text-sm text-muted">No decisions yet. Every AI-drafted patch must be approved or overridden by a named analyst.</p>
+    <table className="w-full">
+      <thead>
+        <tr>
+          {["Sim time", "Event", "Incident", "Type", "State change", "Actor", "Summary"].map((h) => (
+            <th key={h} className={th}>
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {events.map((e) => (
+          <tr key={e.id} className="border-b border-line/60 align-top">
+            <td className={`${td} font-mono text-muted`}>{simTime(e.tick)}</td>
+            <td className={`${td} font-mono text-dim`}>{e.id}</td>
+            <td className={`${td} font-mono`}>{e.incidentId ?? "—"}</td>
+            <td className={`${td} font-mono text-xs font-semibold ${OUTCOME[e.outcome]}`}>{e.type}</td>
+            <td className={`${td} font-mono text-xs text-muted whitespace-nowrap`}>{e.to ? `${e.from ?? "∅"} → ${e.to}` : "—"}</td>
+            <td className={`${td} ${e.actor === "system" ? "text-dim" : "text-neon-hi"}`}>{e.actor}</td>
+            <td className={`${td} text-muted`}>{e.summary}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+export default function AuditLedger() {
+  const { state } = useSimulation();
+  return (
+    <Pane title="Simulated Audit Log" className="flex-1" meta={<span>{state.events.length} events · in-browser demo data, not a tamper-proof ledger</span>}>
+      {state.events.length === 0 ? (
+        <p className="p-8 text-center text-sm text-muted">No events yet. Every simulation action writes an entry here.</p>
       ) : (
-        <table className="w-full">
-          <thead>
-            <tr>
-              {["Time (UTC)", "Entry", "Analyst", "Decision", "Packet", "Source IP", "Rule", "Changes", "Sev"].map((h) => (
-                <th key={h} className={th}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {ledger.map((e) => (
-              <tr key={e.id} className="border-b border-line/60">
-                <td className={`${td} font-mono text-muted`}>{e.ts.replace("T", " ").slice(0, 19)}</td>
-                <td className={`${td} font-mono`}>{e.id}</td>
-                <td className={td}>{e.analyst}</td>
-                <td className={`${td} font-mono text-xs font-semibold`}>
-                  {e.action === "approve" ? <span className="text-neon-hi">APPROVED PATCH</span> : <span className="text-muted">OVERRIDE</span>}
-                </td>
-                <td className={`${td} font-mono`}>{e.itemId}</td>
-                <td className={`${td} font-mono`}>{e.srcIp}</td>
-                <td className={`${td} font-mono`}>{e.action === "approve" ? e.ruleId : "—"}</td>
-                <td className={`${td} font-mono`}>{e.action === "approve" ? e.changes : 0}</td>
-                <td className={td}>
-                  <Sev value={e.severity} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <EventRows events={state.events} />
       )}
     </Pane>
   );

@@ -1,13 +1,21 @@
-import type { TrafficEvent } from "@/lib/types";
-import { hhmmss, Pane, Sev, td, th } from "./soc";
+"use client";
+import { useSimulation } from "./simulation/SimulationProvider";
+import { Pane, simTime, td, th } from "./soc";
 
-export default function TrafficFeed({ traffic }: { traffic: TrafficEvent[] }) {
+const VERDICT = {
+  ALLOWED: <span className="text-emerald-400">ALLOWED</span>,
+  BLOCKED: <span className="text-neon-hi">BLOCKED BY POLICY</span>,
+  FLAGGED: <span className="text-red-400">FLAGGED → INCIDENT</span>,
+};
+
+export default function TrafficFeed() {
+  const { state } = useSimulation();
   return (
-    <Pane title="Live Traffic" meta={<span>last {traffic.length} handshakes seen by the AI</span>} className="flex-1">
+    <Pane title="Synthetic Traffic" meta={<span>{state.traffic.length} packets evaluated in-browser</span>} className="flex-1">
       <table className="w-full">
         <thead>
           <tr>
-            {["#", "Time (UTC)", "Source", "User", "Protocol", "AI verdict", "Latency", "Sev"].map((h) => (
+            {["Packet", "Sim time", "Source", "User", "Protocol", "Verdict", "Detail"].map((h) => (
               <th key={h} className={th}>
                 {h}
               </th>
@@ -15,20 +23,21 @@ export default function TrafficFeed({ traffic }: { traffic: TrafficEvent[] }) {
           </tr>
         </thead>
         <tbody>
-          {traffic.map((t) => (
-            <tr key={t.seq} className={`border-b border-line/60 ${t.verdict === "sandboxed" ? "bg-red-500/5" : ""}`}>
-              <td className={`${td} font-mono text-dim`}>{t.seq}</td>
-              <td className={`${td} font-mono text-muted`}>{hhmmss(t.ts)}</td>
-              <td className={`${td} font-mono`}>{t.srcIp}</td>
-              <td className={`${td} font-mono`}>{t.user}</td>
-              <td className={td}>{t.protocol}</td>
-              <td className={`${td} font-mono text-xs font-semibold`}>
-                {t.verdict === "allowed" ? <span className="text-emerald-400">PASS → FIREWALL</span> : <span className="text-red-400">HOLD → SANDBOX</span>}
-              </td>
-              <td className={`${td} font-mono text-muted`}>{t.verdictMs.toFixed(2)} ms</td>
-              <td className={td}>{t.verdict === "sandboxed" ? <Sev value={t.severity} /> : <span className="text-dim">—</span>}</td>
-            </tr>
-          ))}
+          {state.traffic.map((t) => {
+            const p = state.packets[t.packetId];
+            return (
+              <tr key={t.packetId} className="border-b border-line/60">
+                <td className={`${td} font-mono text-dim`}>{p.id}</td>
+                <td className={`${td} font-mono text-muted`}>{simTime(t.tick)}</td>
+                <td className={`${td} font-mono`}>{p.srcIp}</td>
+                {/* Minimise surveillance: usernames on benign traffic are masked. */}
+                <td className={`${td} font-mono`}>{t.verdict === "ALLOWED" ? p.user.slice(0, 1) + "•••" : p.user}</td>
+                <td className={td}>{p.protocol}</td>
+                <td className={`${td} font-mono text-xs font-semibold`}>{VERDICT[t.verdict]}</td>
+                <td className={`${td} text-xs text-muted`}>{t.detail}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </Pane>
