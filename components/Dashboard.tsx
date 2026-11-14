@@ -87,7 +87,7 @@ function App() {
               <span className={`h-2 w-2 rounded-full ${live ? "live-dot bg-emerald-400" : "bg-dim"}`} />
               {live ? "LIVE" : "PAUSED"}
             </button>
-            <span className="hidden rounded-full border border-line px-3 py-1 text-xs text-muted xl:inline">Synthetic data</span>
+            <span className="hidden rounded-full border border-line px-3 py-1 text-xs text-muted 2xl:inline">Synthetic data</span>
             <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Demo persona" className="h-9 rounded-lg border border-line bg-panel px-2 text-sm">
               {PERSONAS.map((p) => (
                 <option key={p}>{p}</option>

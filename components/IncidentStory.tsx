@@ -55,7 +55,7 @@ function StepHeader({ n, title, done }: { n: number; title: string; done: boolea
       <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${done ? "bg-neon/20 text-neon-hi" : "bg-panel-2 text-dim"}`}>
         <Icon className="h-5 w-5" />
       </span>
-      <h3 className="text-xl font-semibold">
+      <h3 className="text-lg font-semibold">
         <span className="text-dim">Step {n + 1} · </span>
         {title}
       </h3>
@@ -104,28 +104,17 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
         </div>
       </header>
 
-      {/* progress */}
-      <ol className="grid grid-cols-4 gap-2">
-        {STEPS.map((s, i) => {
-          const reached = i <= step;
-          const current = i === step;
-          return (
-            <li key={s.label} className={`rounded-xl border px-3 py-2.5 text-center text-sm ${current ? "border-neon bg-neon/10 font-semibold text-ink" : reached ? "border-line bg-panel text-muted" : "border-line/50 text-dim"}`}>
-              {reached && !current ? "✓ " : ""}
-              {s.label}
-            </li>
-          );
-        })}
-      </ol>
-
       <JourneyPanel title="Where this connection is now" j={journeyForIncident(inc, state.firewall.rules.filter((r) => r.origin === "patch").length)} />
 
+      {/* evidence on the left, the decision and its result on the right */}
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+      <div className="space-y-6">
       {/* 1. Spotted */}
       <Card>
         <StepHeader n={0} title="What looked wrong" done />
         <ul className="space-y-2">
           {hits.map((f) => (
-            <li key={f.check} className="flex items-start gap-3 text-lg">
+            <li key={f.check} className="flex items-start gap-3">
               <AlertTriangle className={`mt-1 h-5 w-5 shrink-0 ${f.points ? "text-red-400" : "text-amber-300"}`} />
               {findingText(f, p)}
             </li>
@@ -162,7 +151,7 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
           ) : (
             <>
               <div className={`rounded-xl p-5 ${outcome.tone === "bad" ? "bg-red-500/10" : outcome.tone === "warn" ? "bg-amber-500/10" : "bg-emerald-500/10"}`}>
-                <p className={`text-2xl font-semibold ${outcome.tone === "bad" ? "text-red-300" : outcome.tone === "warn" ? "text-amber-200" : "text-emerald-300"}`}>{outcome.title}</p>
+                <p className={`text-xl font-semibold ${outcome.tone === "bad" ? "text-red-300" : outcome.tone === "warn" ? "text-amber-200" : "text-emerald-300"}`}>{outcome.title}</p>
                 <p className="mt-1 text-muted">{outcome.detail}</p>
               </div>
               {inc.status === "BENIGN" && (
@@ -203,12 +192,21 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
         </Card>
       )}
 
+      </div>
+      <div className="space-y-6">
+      {!prop && (
+        <div className="rounded-2xl border border-dashed border-line p-8 text-center text-muted">
+          {inc.status === "BENIGN" || inc.status === "INCONCLUSIVE"
+            ? "No fix proposed: the evidence does not justify blocking anyone."
+            : "The proposed fix and your decision will appear here once the investigation finishes."}
+        </div>
+      )}
       {/* 3. Your decision */}
       {step >= 2 && prop && (
         <Card className={inc.status === "AWAITING_REVIEW" ? "!border-neon/60" : ""}>
           <StepHeader n={2} title="Proposed fix: your decision" done />
-          <p className="rounded-xl bg-bg p-5 text-2xl font-semibold">{ruleText(prop.rule.match)}</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <p className="rounded-xl bg-bg p-4 text-xl font-semibold">{ruleText(prop.rule.match)}</p>
+          <div className="mt-4 grid gap-2">
             <p className="flex items-center gap-2 text-lg">
               <CheckCircle2 className="h-5 w-5 text-emerald-400" /> Temporary: lasts 24 hours
             </p>
@@ -306,6 +304,9 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
           )}
         </Card>
       )}
+
+      </div>
+      </div>
 
       {/* continue bar */}
       {next && (

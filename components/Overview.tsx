@@ -1,13 +1,15 @@
 "use client";
-// Home screen: four headline numbers, how the system works, scenario buttons, and the incident list.
-import { ArrowRight, CheckCircle2, FlaskConical, Radar, UserCheck } from "lucide-react";
+// Home screen, kept to roughly two screens: a hero with one clear call to action, a slim row of
+// live numbers, the live visualization, and one tabbed card for scenarios / threats / how it works.
+import { useState } from "react";
+import { ArrowRight, CheckCircle2, FlaskConical, Play, Radar, UserCheck } from "lucide-react";
 import { SCENARIOS } from "@/lib/simulation/scenarios";
 import { counts } from "@/lib/simulation/selectors";
-import { journeyForTraffic } from "./viz/journey";
-import JourneyPanel from "./viz/JourneyPanel";
 import LiveTicker from "./LiveTicker";
 import { useSimulation } from "./simulation/SimulationProvider";
-import { Card, StatusBadge } from "./ui";
+import { StatusBadge } from "./ui";
+import { journeyForTraffic } from "./viz/journey";
+import JourneyPanel from "./viz/JourneyPanel";
 
 const HOW = [
   { icon: Radar, title: "Spot", text: "Check every connection for warning signs" },
@@ -18,12 +20,12 @@ const HOW = [
 
 // Plain one-liners for the audience (the technical summary stays in scenarios.ts).
 const SCENARIO_TEXT: Record<string, string> = {
-  legit: "An employee logs in from home. Nothing should happen.",
-  "malformed-tls": "A broken connection designed to crash the firewall.",
-  "false-positive": "Looks unusual, but it is a real user. Should not be blocked.",
-  "broad-patch": "The drafted fix would block real users. Watch it get stopped.",
-  rollback: "A fix that passes early tests but fails later, then gets undone.",
-  inconclusive: "Something odd, but not enough proof to block it.",
+  legit: "An employee logs in from home.",
+  "malformed-tls": "A connection built to crash the firewall.",
+  "false-positive": "Looks odd, but it's a real user.",
+  "broad-patch": "The drafted fix would block real users.",
+  rollback: "A fix fails late testing and is undone.",
+  inconclusive: "Odd, but not enough proof to block.",
 };
 
 const SCENARIO_TAG: Record<string, string> = {
@@ -35,103 +37,120 @@ const SCENARIO_TAG: Record<string, string> = {
   inconclusive: "Uncertain",
 };
 
+type Tab = "scenarios" | "threats" | "how";
+
 export default function Overview({ onLaunch, onOpen }: { onLaunch: (id: string) => void; onOpen: (id: string) => void }) {
   const { state } = useSimulation();
   const c = counts(state);
+  const [tab, setTab] = useState<Tab>("scenarios");
   const stats: [string, number, string][] = [
     ["Connections checked", c.analyzed, "text-ink"],
     ["Threats caught", c.detected, "text-red-300"],
     ["Waiting for a human", c.awaitingReview, "text-neon-hi"],
     ["Fixes verified", c.verified, "text-emerald-300"],
   ];
+  const tabs: [Tab, string, number?][] = [
+    ["scenarios", "Try a scenario"],
+    ["threats", "Threats", state.incidents.length],
+    ["how", "How it works"],
+  ];
 
   return (
-    <div className="space-y-12">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          The AI investigates. <span className="text-neon-hi">The human authorizes.</span> The system verifies.
-        </h1>
-        <p className="mt-2 max-w-3xl text-lg text-muted">
-          A safe simulation of how suspicious VPN traffic is caught, tested in a sandbox, approved by a person, and checked before it can affect real users.
+    <div className="space-y-8">
+      {/* hero */}
+      <section>
+        <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-neon/40 bg-neon/10 px-3 py-1 text-xs font-semibold tracking-wider text-neon-hi uppercase">
+          Human-in-the-loop VPN defense
         </p>
-      </div>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <h1 className="text-4xl leading-[1.1] font-bold tracking-tight sm:text-5xl">
+          The AI investigates. <span className="bg-gradient-to-r from-neon-hi to-emerald-300 bg-clip-text text-transparent">The human authorizes.</span>
+          <br className="hidden md:block" /> The system verifies.
+        </h1>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-5">
+          <p className="max-w-xl text-lg text-muted">Catch suspicious connections, test them safely, and let a person approve every fix, without blocking real users.</p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => onLaunch("malformed-tls")}
+              className="flex items-center gap-2 rounded-xl bg-neon px-6 py-3.5 text-lg font-semibold text-white shadow-[0_0_30px_rgba(4,159,217,0.45)] transition hover:bg-neon-hi hover:shadow-[0_0_40px_rgba(0,188,235,0.6)]"
+            >
+              <Play className="h-5 w-5" /> Run the attack demo
+            </button>
+            <button onClick={() => onLaunch("false-positive")} className="rounded-xl border border-line bg-panel/80 px-5 py-3.5 text-lg text-muted backdrop-blur hover:border-neon hover:text-ink">
+              Try a false alarm
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* slim live numbers */}
+      <section className="grid grid-cols-2 divide-line rounded-2xl border border-line bg-panel/80 backdrop-blur sm:grid-cols-4 sm:divide-x">
         {stats.map(([label, value, color]) => (
-          <Card key={label} className="!p-5">
-            <p className="text-sm text-muted">{label}</p>
+          <div key={label} className="px-5 py-4">
             {/* re-keyed on change so each new value pops in */}
-            <p key={value} className={`mt-1 text-4xl font-semibold tabular-nums animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ${color}`}>
+            <p key={value} className={`text-3xl font-bold tabular-nums animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ${color}`}>
               {value}
             </p>
-          </Card>
+            <p className="text-sm text-muted">{label}</p>
+          </div>
         ))}
-      </div>
+      </section>
 
       <div className="space-y-4">
         <LiveTicker />
         <JourneyPanel title="Watch connections travel through ShieldOps" j={journeyForTraffic(state.traffic[0])} />
       </div>
 
-      <div>
-        <h2 className="mb-3 text-lg font-semibold">How it works</h2>
-        <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {HOW.map((h, i) => (
-            <li key={h.title} className="flex items-start gap-3 rounded-2xl border border-line bg-panel p-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neon/15 text-neon-hi">
-                <h.icon className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="font-semibold">
-                  {i + 1}. {h.title}
-                </p>
-                <p className="text-sm text-muted">{h.text}</p>
-              </div>
-            </li>
+      {/* one tabbed card instead of three stacked sections */}
+      <section className="rounded-3xl border border-line bg-panel/85 p-6 backdrop-blur">
+        <div role="tablist" aria-label="Overview sections" className="mb-5 flex flex-wrap gap-1 border-b border-line">
+          {tabs.map(([id, label, n]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold ${tab === id ? "border-neon text-ink" : "border-transparent text-muted hover:text-ink"}`}
+            >
+              {label}
+              {n !== undefined && n > 0 && <span className="rounded-full bg-neon/20 px-2 text-xs text-neon-hi">{n}</span>}
+            </button>
           ))}
-        </ol>
-      </div>
+        </div>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">
-        <div>
-          <h2 className="mb-1 text-lg font-semibold">Try a scenario</h2>
-          <p className="mb-3 text-sm text-muted">Each button sends one synthetic connection through the system.</p>
-          <div className="space-y-2">
+        {tab === "scenarios" && (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {SCENARIOS.map((s) => (
               <button
                 key={s.id}
                 onClick={() => onLaunch(s.id)}
-                className={`group flex w-full items-center gap-4 rounded-xl border px-4 py-3 text-left transition-colors hover:border-neon hover:bg-neon/5 ${s.id === "malformed-tls" ? "border-neon/50 bg-neon/5" : "border-line bg-panel"}`}
+                className={`group rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-neon hover:shadow-[0_8px_30px_rgba(4,159,217,0.15)] ${s.id === "malformed-tls" ? "border-neon/50 bg-neon/5" : "border-line bg-bg/40"}`}
               >
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{s.name}</p>
-                  <p className="text-sm text-muted">{SCENARIO_TEXT[s.id] ?? s.summary}</p>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="rounded-full bg-panel-2 px-2.5 py-0.5 text-xs text-muted">{SCENARIO_TAG[s.id]}</span>
+                  <ArrowRight className="h-4 w-4 text-dim transition group-hover:translate-x-0.5 group-hover:text-neon-hi" />
                 </div>
-                <span className="shrink-0 rounded-full bg-panel-2 px-2.5 py-0.5 text-xs text-muted">{SCENARIO_TAG[s.id]}</span>
-                <ArrowRight className="h-4 w-4 shrink-0 text-dim group-hover:text-neon-hi" />
+                <p className="font-semibold">{s.name}</p>
+                <p className="text-sm text-muted">{SCENARIO_TEXT[s.id] ?? s.summary}</p>
               </button>
             ))}
           </div>
-        </div>
+        )}
 
-        <div>
-          <h2 className="mb-1 text-lg font-semibold">Threats</h2>
-          <p className="mb-3 text-sm text-muted">Click one to see the full story.</p>
-          {state.incidents.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-line p-10 text-center text-muted">
-              {c.analyzed ? "Everything so far looked normal. No threats." : "No threats yet. Pick a scenario to start."}
-            </div>
+        {tab === "threats" &&
+          (state.incidents.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-line p-8 text-center text-muted">No threats yet. Run the attack demo to create one.</p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="grid gap-2 lg:grid-cols-2">
               {state.incidents.map((i) => {
                 const p = state.packets[i.packetId];
                 const sc = SCENARIOS.find((s) => s.id === i.scenarioId);
                 return (
                   <li key={i.id}>
-                    <button onClick={() => onOpen(i.id)} className="flex w-full items-center gap-4 rounded-xl border border-line bg-panel px-4 py-3 text-left hover:border-neon">
+                    <button onClick={() => onOpen(i.id)} className="flex w-full items-center gap-4 rounded-xl border border-line bg-bg/40 px-4 py-3 text-left hover:border-neon">
                       <div className="min-w-0 flex-1">
                         <p className="font-medium">{sc?.name ?? "Suspicious connection"}</p>
                         <p className="text-sm text-muted">
-                          {i.id} · from {p.srcIp} · risk {i.detection.risk.toLowerCase()}
+                          {i.id} · {p.srcIp} · risk {i.detection.risk.toLowerCase()}
                         </p>
                       </div>
                       <StatusBadge status={i.status} />
@@ -140,9 +159,26 @@ export default function Overview({ onLaunch, onOpen }: { onLaunch: (id: string) 
                 );
               })}
             </ul>
-          )}
-        </div>
-      </div>
+          ))}
+
+        {tab === "how" && (
+          <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {HOW.map((h, i) => (
+              <li key={h.title} className="flex items-start gap-3 rounded-2xl border border-line bg-bg/40 p-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neon/15 text-neon-hi">
+                  <h.icon className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="font-semibold">
+                    {i + 1}. {h.title}
+                  </p>
+                  <p className="text-sm text-muted">{h.text}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
     </div>
   );
 }
