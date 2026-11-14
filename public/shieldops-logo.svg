@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 96" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="s" x1="10" y1="4" x2="54" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00bceb"/><stop offset="1" stop-color="#049fd9"/>
+    </linearGradient>
+    <linearGradient id="c" x1="18" y1="42" x2="46" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#6ee7b7"/>
+    </linearGradient>
+    <linearGradient id="t" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00bceb"/><stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(8 8) scale(1.25)">
+    <path d="M32 6 52 13.5V30c0 13-8.6 22.6-20 27.5C20.6 52.6 12 43 12 30V13.5Z" fill="#0b1e36" stroke="url(#s)" stroke-width="3.5" stroke-linejoin="round"/>
+    <path d="M32 11.5 47.5 17.3V30c0 10-6.3 17.8-15.5 22.1" fill="none" stroke="#00bceb" stroke-opacity=".35" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M20.5 32.5 28.5 40.5 44 24.5" fill="none" stroke="url(#c)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="20.5" cy="32.5" r="3.2" fill="#00bceb"/><circle cx="28.5" cy="40.5" r="3.2" fill="#fff"/><circle cx="44" cy="24.5" r="3.2" fill="#34d399"/>
+  </g>
+  <text x="96" y="58" font-size="44" font-weight="700" letter-spacing="-1" fill="#e6f1fb">Shield<tspan fill="url(#t)">Ops</tspan></text>
+  <text x="98" y="80" font-size="12" font-weight="600" letter-spacing="2.4" fill="#7f9bb8">INVESTIGATE · AUTHORIZE · VERIFY</text>
+</svg>

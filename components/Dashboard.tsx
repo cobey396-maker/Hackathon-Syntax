@@ -1,7 +1,8 @@
 "use client";
 // App shell: header with three tabs. Opening a threat shows its story in place of the tab.
 import { useState } from "react";
-import { RotateCcw, Shield } from "lucide-react";
+import { RotateCcw } from "lucide-react";
+import { LogoMark } from "./Logo";
 import { reduce } from "@/lib/simulation/engine";
 import { SCENARIOS } from "@/lib/simulation/scenarios";
 import { counts } from "@/lib/simulation/selectors";
@@ -48,9 +49,7 @@ function App() {
       <header className="sticky top-0 z-20 border-b border-line bg-bg/75 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neon/20">
-              <Shield className="h-5 w-5 text-neon-hi" />
-            </span>
+            <LogoMark className="h-11 w-11 drop-shadow-[0_0_12px_rgba(0,188,235,0.45)]" />
             <div>
               <p className="text-xl font-bold leading-tight tracking-tight">Shield<span className="text-neon-hi">Ops</span></p>
               <p className="text-xs text-muted">Cisco Digital Shield · HackNCAT 10.0</p>
