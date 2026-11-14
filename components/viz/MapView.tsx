@@ -1,7 +1,35 @@
 "use client";
 // Style 1 · Map: the real network path across the top, the investigation loop underneath.
 // Generous spacing; packets move only on segments that are part of what is happening now.
+import { useEffect, useRef, useState } from "react";
+import type { TrafficRecord } from "@/lib/simulation/types";
 import { HEX, moving, NODE_CLASS, STAGES, STATE_HEX, type Journey, type StageId, type StageState } from "./journey";
+
+/** Route each live connection takes, by the verdict the engine gave it. */
+const STREAM: Record<TrafficRecord["verdict"], { d: string; color: string; dur: number }> = {
+  ALLOWED: { d: "M90 110 H910", color: "#e6f6fd", dur: 2.6 },
+  BLOCKED: { d: "M90 110 H330", color: HEX.red, dur: 1.2 },
+  FLAGGED: { d: "M90 110 H610 C610 240 790 210 790 340", color: HEX.red, dur: 2.8 },
+};
+
+/** One live connection: travels its route once, then fades. */
+function StreamDot({ t }: { t: TrafficRecord }) {
+  const m = useRef<SVGAnimateMotionElement>(null);
+  const o = useRef<SVGAnimateElement>(null);
+  useEffect(() => {
+    m.current?.beginElement();
+    o.current?.beginElement();
+  }, []);
+  const r = STREAM[t.verdict];
+  return (
+    <g filter="url(#glow)">
+      <circle r="5" fill={r.color} opacity="0">
+        <animateMotion ref={m} begin="indefinite" dur={`${r.dur}s`} path={r.d} fill="freeze" />
+        <animate ref={o} attributeName="opacity" begin="indefinite" dur={`${r.dur}s`} values="0;1;1;0" keyTimes="0;0.08;0.85;1" fill="freeze" />
+      </circle>
+    </g>
+  );
+}
 
 const W = 1000;
 const H = 470;
@@ -46,11 +74,23 @@ function Dots({ d, color }: { d: string; color: string }) {
   );
 }
 
-export default function MapView({ j }: { j: Journey }) {
+export default function MapView({ j, stream = [] }: { j: Journey; stream?: TrafficRecord[] }) {
+  // Only animate connections that arrive after this view mounts (no replay of history).
+  const [since] = useState(() => (stream[0]?.tick ?? -1));
+  const fresh = stream.filter((t) => t.tick > since).slice(0, 8);
   return (
     <div className="overflow-x-auto">
       <div className="relative mx-auto min-w-[760px]" style={{ aspectRatio: `${W} / ${H}` }}>
-        <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" aria-hidden>
+        <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
+          <defs>
+            <filter id="glow" filterUnits="userSpaceOnUse" x="-50" y="-50" width={W + 100} height={H + 100}>
+              <feGaussianBlur stdDeviation="4" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
           {/* lane labels */}
           <text x="0" y="28" fill={HEX.dim} fontSize="13" letterSpacing="2">MAIN PATH</text>
           <rect x="250" y="268" width="640" height="190" rx="28" fill="none" stroke={HEX.line} strokeDasharray="4 8" />
@@ -60,7 +100,11 @@ export default function MapView({ j }: { j: Journey }) {
             const st = edgeState(j, e.from, e.to, e.id);
             const idle = st === "idle";
             return (
-              <path key={e.id} d={e.d} fill="none" stroke={idle ? HEX.line : STATE_HEX[st]} strokeWidth={idle ? 3 : 5} strokeLinecap="round" strokeDasharray={e.dashed ? "10 10" : undefined} opacity={idle ? 0.8 : 1} />
+              <g key={e.id}>
+                <path d={e.d} fill="none" stroke={idle ? HEX.line : STATE_HEX[st]} strokeWidth={idle ? 3 : 5} strokeLinecap="round" strokeDasharray={e.dashed ? "10 10" : undefined} opacity={idle ? 0.8 : 1} filter={idle ? undefined : "url(#glow)"} />
+                {/* flowing "current" on the busy segments */}
+                {moving(st) && <path d={e.d} fill="none" stroke="#ffffff" strokeOpacity="0.55" strokeWidth="2" strokeLinecap="round" className="dash-flow" />}
+              </g>
             );
           })}
           <text x="318" y="232" fill={HEX.dim} fontSize="13" textAnchor="end">installs fix ↑</text>
@@ -69,6 +113,10 @@ export default function MapView({ j }: { j: Journey }) {
             const st = edgeState(j, e.from, e.to, e.id);
             return moving(st) ? <Dots key={`${e.id}-${st}`} d={e.d} color={STATE_HEX[st]} /> : null;
           })}
+
+          {fresh.map((t) => (
+            <StreamDot key={t.packetId} t={t} />
+          ))}
 
           {j.blockedAtFirewall && (
             <g transform="translate(400 110)">

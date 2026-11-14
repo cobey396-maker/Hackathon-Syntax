@@ -16,11 +16,19 @@ const STYLES: { id: VizStyle; label: string; icon: typeof GitBranch }[] = [
 ];
 
 export default function JourneyPanel({ j, title }: { j: Journey; title: string }) {
-  const { vizStyle, setVizStyle } = useSimulation();
+  const { state, vizStyle, setVizStyle, live } = useSimulation();
   return (
-    <section className="rounded-3xl border border-line bg-panel p-6 sm:p-8">
+    <div className="glow-ring">
+    <section className="relative rounded-3xl border border-line bg-panel/95 p-6 backdrop-blur sm:p-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold">{title}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold">{title}</h2>
+          {live && (
+            <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold tracking-wider text-emerald-300">
+              <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-400" /> LIVE
+            </span>
+          )}
+        </div>
         <div role="tablist" aria-label="Visualization style" className="flex rounded-xl border border-line bg-bg p-1">
           {STYLES.map((s) => (
             <button
@@ -37,7 +45,7 @@ export default function JourneyPanel({ j, title }: { j: Journey; title: string }
         </div>
       </div>
 
-      {vizStyle === "map" && <MapView j={j} />}
+      {vizStyle === "map" && <MapView j={j} stream={live ? state.traffic : []} />}
       {vizStyle === "timeline" && <TimelineView j={j} />}
       {vizStyle === "spotlight" && <SpotlightView j={j} />}
 
@@ -48,5 +56,6 @@ export default function JourneyPanel({ j, title }: { j: Journey; title: string }
         </p>
       )}
     </section>
+    </div>
   );
 }

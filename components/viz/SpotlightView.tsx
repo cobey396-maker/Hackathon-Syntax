@@ -18,8 +18,11 @@ export default function SpotlightView({ j }: { j: Journey }) {
 
   return (
     <div>
-      <div key={`${j.active}-${j.headline}`} className="flex flex-col items-center gap-8 py-6 text-center animate-in fade-in-0 zoom-in-95 duration-500 sm:flex-row sm:text-left">
+      <div key={`${j.active}-${j.headline}`} className="flex flex-col items-center gap-14 py-10 text-center animate-in fade-in-0 zoom-in-95 duration-500 sm:flex-row sm:text-left">
         <div className="relative flex h-44 w-44 shrink-0 items-center justify-center">
+          {/* slow orbit rings */}
+          <span className="absolute -inset-4 animate-spin rounded-full border-2 border-dashed border-neon/30 [animation-duration:18s]" />
+          <span className="absolute -inset-9 animate-spin rounded-full border border-dotted border-neon/20 [animation-direction:reverse] [animation-duration:28s]" />
           {stage && <span className={`absolute inset-0 animate-ping rounded-full opacity-40 [animation-duration:2.2s] ${RING[j.tone]}`} />}
           <span className={`relative flex h-40 w-40 items-center justify-center rounded-full border-4 ${stage ? DISC[j.tone] : "border-line bg-panel text-dim"}`}>
             {Icon ? <Icon className="h-20 w-20" strokeWidth={1.5} /> : <span className="text-5xl">·</span>}

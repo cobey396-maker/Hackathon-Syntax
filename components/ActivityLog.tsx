@@ -1,5 +1,6 @@
 "use client";
 // Audit trail as a readable timeline. Every entry is written by the engine when something happens.
+import { useState } from "react";
 import type { AuditEvent } from "@/lib/simulation/types";
 import { simTime } from "./time";
 import { useSimulation } from "./simulation/SimulationProvider";
@@ -31,15 +32,22 @@ const DOT: Record<AuditEvent["outcome"], string> = { ok: "bg-emerald-400", warn:
 
 export default function ActivityLog() {
   const { state } = useSimulation();
+  // Live mode adds a routine "allowed" entry every couple of seconds; hide those unless asked.
+  const [routine, setRoutine] = useState(false);
+  const events = routine ? state.events : state.events.filter((e) => e.type !== "TRAFFIC_ALLOWED");
   return (
     <Card>
       <h2 className="text-xl font-semibold">Activity log</h2>
       <p className="mb-5 text-muted">Every step and every human decision, in order. Demo data kept in this browser only.</p>
-      {state.events.length === 0 ? (
+      <label className="mb-5 flex w-fit cursor-pointer items-center gap-2 text-sm text-muted">
+        <input type="checkbox" checked={routine} onChange={(e) => setRoutine(e.target.checked)} className="accent-[#049fd9]" />
+        Show routine allowed connections
+      </label>
+      {events.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line p-8 text-center text-muted">Nothing yet. Run a scenario.</p>
       ) : (
         <ol className="relative space-y-4 border-l border-line pl-6">
-          {state.events.map((e) => {
+          {events.map((e) => {
             const human = e.actor !== "system";
             return (
               <li key={e.id} className="relative">

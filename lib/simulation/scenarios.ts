@@ -79,3 +79,18 @@ export const LABELED_SET: LabeledPacket[] = [
   { label: "rollback target", malicious: true, packet: SCENARIOS[4].packet },
   { label: "inconclusive (odd version)", malicious: true, packet: SCENARIOS[5].packet },
 ];
+
+// ── Live background traffic ──────────────────────────────────────────────────────────────
+const LIVE_USERS = ["a.patel", "j.nguyen", "m.garcia", "s.kim", "r.oconnor", "l.mbeki", "t.schmidt", "e.rossi", "branch-03", "branch-07"];
+const LIVE_TEMPLATES = CONTROL_TRAFFIC.slice(0, 4); // well-formed, normal-sized logins
+
+/**
+ * The n-th live connection: a deterministic, legitimate remote-worker login.
+ * It is ingested by the real engine like any other packet; nothing about its outcome is faked.
+ */
+export function liveConnection(n: number): PacketInput {
+  const t = LIVE_TEMPLATES[n % LIVE_TEMPLATES.length].packet;
+  const net = t.srcIp.startsWith("198.51.100.") ? "198.51.100." : "192.0.2.";
+  const len = 420 + ((n * 37) % 260); // vary size within the normal range
+  return { ...t, srcIp: `${net}${10 + ((n * 23) % 200)}`, user: LIVE_USERS[n % LIVE_USERS.length], declaredLen: len, actualLen: len };
+}

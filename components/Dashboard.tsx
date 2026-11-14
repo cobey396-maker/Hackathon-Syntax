@@ -19,7 +19,7 @@ const TABS: [Tab, string][] = [
 ];
 
 function App() {
-  const { state, dispatch, persona, setPersona } = useSimulation();
+  const { state, dispatch, persona, setPersona, live, setLive } = useSimulation();
   const [tab, setTab] = useState<Tab>("overview");
   const [openId, setOpenId] = useState<string | null>(null);
   const waiting = counts(state).awaitingReview;
@@ -41,7 +41,11 @@ function App() {
 
   return (
     <div className="min-h-full">
-      <header className="sticky top-0 z-20 border-b border-line bg-bg/90 backdrop-blur">
+      <div className="aurora" aria-hidden>
+        <span />
+        <span />
+      </div>
+      <header className="sticky top-0 z-20 border-b border-line bg-bg/75 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-neon/20">
@@ -74,7 +78,16 @@ function App() {
           </nav>
 
           <div className="ml-auto flex items-center gap-3">
-            <span className="hidden rounded-full border border-line px-3 py-1 text-xs text-muted xl:inline">Simulation · synthetic data</span>
+            <button
+              onClick={() => setLive(!live)}
+              aria-pressed={live}
+              title="Background stream of normal logins, checked by the real engine"
+              className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold tracking-wider ${live ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-line text-muted"}`}
+            >
+              <span className={`h-2 w-2 rounded-full ${live ? "live-dot bg-emerald-400" : "bg-dim"}`} />
+              {live ? "LIVE" : "PAUSED"}
+            </button>
+            <span className="hidden rounded-full border border-line px-3 py-1 text-xs text-muted xl:inline">Synthetic data</span>
             <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Demo persona" className="h-9 rounded-lg border border-line bg-panel px-2 text-sm">
               {PERSONAS.map((p) => (
                 <option key={p}>{p}</option>

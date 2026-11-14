@@ -194,3 +194,15 @@ test("metrics come from fixture runs", () => {
   // Investigation should never add false positives on top of the detector.
   assert.ok(m.pipeline.fp <= m.detector.fp);
 });
+
+test("live traffic: 500 background logins create no incidents and history stays bounded", async () => {
+  const { liveConnection } = await import("../lib/simulation/scenarios.ts");
+  const { MAX_TRAFFIC, MAX_ROUTINE_EVENTS } = await import("../lib/simulation/engine.ts");
+  let s = ingest(initialState(), "malformed-tls"); // one real incident must survive the flood
+  for (let n = 0; n < 500; n++) s = reduce(s, { type: "INGEST", packet: liveConnection(n) });
+  assert.equal(s.incidents.length, 1);
+  assert.equal(s.traffic.length, MAX_TRAFFIC);
+  assert.ok(s.traffic.every((t) => t.verdict === "ALLOWED"));
+  assert.ok(s.events.filter((e) => e.incidentId === null).length <= MAX_ROUTINE_EVENTS * 2);
+  assert.ok(s.events.some((e) => e.incidentId === "INC-0001" && e.type === "DETECTED"));
+});

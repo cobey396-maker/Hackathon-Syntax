@@ -12,7 +12,7 @@ export function StatusBadge({ status }: { status: IncidentStatus }) {
 }
 
 export function Card({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <section className={`rounded-2xl border border-line bg-panel p-6 ${className}`}>{children}</section>;
+  return <section className={`rounded-2xl border border-line bg-panel/85 p-6 shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur ${className}`}>{children}</section>;
 }
 
 export function Details({ summary, children }: { summary: string; children: React.ReactNode }) {

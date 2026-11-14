@@ -5,6 +5,7 @@ import { SCENARIOS } from "@/lib/simulation/scenarios";
 import { counts } from "@/lib/simulation/selectors";
 import { journeyForTraffic } from "./viz/journey";
 import JourneyPanel from "./viz/JourneyPanel";
+import LiveTicker from "./LiveTicker";
 import { useSimulation } from "./simulation/SimulationProvider";
 import { Card, StatusBadge } from "./ui";
 
@@ -58,12 +59,18 @@ export default function Overview({ onLaunch, onOpen }: { onLaunch: (id: string) 
         {stats.map(([label, value, color]) => (
           <Card key={label} className="!p-5">
             <p className="text-sm text-muted">{label}</p>
-            <p className={`mt-1 text-4xl font-semibold tabular-nums ${color}`}>{value}</p>
+            {/* re-keyed on change so each new value pops in */}
+            <p key={value} className={`mt-1 text-4xl font-semibold tabular-nums animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ${color}`}>
+              {value}
+            </p>
           </Card>
         ))}
       </div>
 
-      <JourneyPanel title="Watch a connection travel through ShieldOps" j={journeyForTraffic(state.traffic[0])} />
+      <div className="space-y-4">
+        <LiveTicker />
+        <JourneyPanel title="Watch connections travel through ShieldOps" j={journeyForTraffic(state.traffic[0])} />
+      </div>
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">How it works</h2>

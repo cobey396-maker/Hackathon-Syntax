@@ -45,6 +45,10 @@ export const initialState = (): SimState => ({
 
 const pad = (n: number) => String(n).padStart(4, "0");
 
+/** History limits so a long-running live demo stays fast. Incidents and their events are never dropped. */
+export const MAX_TRAFFIC = 200;
+export const MAX_ROUTINE_EVENTS = 200;
+
 class SimError extends Error {}
 const fail = (msg: string): never => {
   throw new SimError(msg);
@@ -56,6 +60,11 @@ type Draft = SimState;
 function log(s: Draft, e: Omit<AuditEvent, "id" | "tick">) {
   s.seq = { ...s.seq, event: s.seq.event + 1 };
   s.events = [{ ...e, id: `EVT-${pad(s.seq.event)}`, tick: s.tick }, ...s.events];
+  // Live traffic produces many routine entries; keep every incident event but only recent routine ones.
+  if (s.events.length > MAX_ROUTINE_EVENTS * 2) {
+    let routine = 0;
+    s.events = s.events.filter((x) => x.incidentId !== null || ++routine <= MAX_ROUTINE_EVENTS);
+  }
 }
 
 function getIncident(s: Draft, id: string): Incident {
@@ -124,14 +133,14 @@ function apply(s: Draft, a: Action) {
       // Policy first: traffic the virtual firewall already blocks never reaches the parser.
       const fw = evaluatePacket(p, s.firewall, s.tick);
       if (fw.verdict === "BLOCK") {
-        s.traffic = [{ packetId: p.id, tick: s.tick, verdict: "BLOCKED", detail: `${fw.matchedRule}: ${fw.reason}`, incidentId: null }, ...s.traffic];
+        s.traffic = [{ packetId: p.id, tick: s.tick, verdict: "BLOCKED" as const, detail: `${fw.matchedRule}: ${fw.reason}`, incidentId: null }, ...s.traffic].slice(0, MAX_TRAFFIC);
         log(s, { incidentId: null, type: "TRAFFIC_BLOCKED", from: null, to: null, actor: "system", outcome: "ok", summary: `${p.id} from ${p.srcIp} blocked by ${fw.matchedRule}` });
         return;
       }
 
       const d = detect(p);
       if (!d.suspicious) {
-        s.traffic = [{ packetId: p.id, tick: s.tick, verdict: "ALLOWED", detail: "classified BENIGN: all checks passed", incidentId: null }, ...s.traffic];
+        s.traffic = [{ packetId: p.id, tick: s.tick, verdict: "ALLOWED" as const, detail: "classified BENIGN: all checks passed", incidentId: null }, ...s.traffic].slice(0, MAX_TRAFFIC);
         log(s, { incidentId: null, type: "TRAFFIC_ALLOWED", from: null, to: null, actor: "system", outcome: "ok", summary: `${p.id} from ${p.srcIp} classified BENIGN, allowed` });
         return;
       }
@@ -148,7 +157,7 @@ function apply(s: Draft, a: Action) {
         updatedTick: s.tick,
       };
       s.incidents = [inc, ...s.incidents];
-      s.traffic = [{ packetId: p.id, tick: s.tick, verdict: "FLAGGED", detail: d.summary, incidentId: inc.id }, ...s.traffic];
+      s.traffic = [{ packetId: p.id, tick: s.tick, verdict: "FLAGGED" as const, detail: d.summary, incidentId: inc.id }, ...s.traffic].slice(0, MAX_TRAFFIC);
       log(s, { incidentId: inc.id, type: "DETECTED", from: null, to: "DETECTED", actor: "system", outcome: "warn", summary: `${p.id} from ${p.srcIp}: ${d.summary}` });
       return;
     }
