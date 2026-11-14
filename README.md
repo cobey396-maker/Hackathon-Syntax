@@ -12,7 +12,7 @@ npm run dev                      # http://localhost:3000
 python traffic_simulator.py      # optional second terminal; stdlib only
 ```
 
-***No terminal needed:** the dashboard generates its own background logins and has the attack keys built in. On the page press **`Z`** (zero-day, rotating tier), **`C`** (critical 10/10), **`R`** (replay the last held attack), or click the same buttons under **Attack simulator** in the sidebar. Untick **Background logins** if you run the Python simulator instead.
+**No terminal needed:** the dashboard generates its own background logins and has the attack keys built in. On the page press **`Z`** (zero-day, rotating tier), **`C`** (critical 10/10), **`R`** (replay the last held attack), or click the same buttons under **Attack simulator** in the sidebar. Untick **Background logins** if you run the Python simulator instead.
 
 Optionally, in the simulator terminal, legitimate remote-worker logins stream in **green**. Press **`z`** to inject a malformed zero-day handshake (rotates mild → moderate → critical), **`c`** to inject a critical one every time (10/10, crashes the parser; best for demos), **`r`** to replay the last zero-day from the same attacker, **`q`** to quit. In Git Bash or other terminals that don't pass single keys, type the key and press Enter. Flags: `--rate 2` (logins/sec), `--auto-attack 10` (also inject ~1 zero-day per 10 logins), `--url` (other host).
 
