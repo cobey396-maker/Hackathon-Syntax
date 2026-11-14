@@ -57,7 +57,7 @@ export const SCENARIOS: Scenario[] = [
     id: "rollback",
     name: "Verification failure → rollback",
     summary: "Rule passes the narrow pre-check but blocks a regression case after deployment.",
-    packet: { srcIp: "203.0.113.90", user: "unknown", protocol: "AnyConnect SSL", service: GW, tlsVersion: 0x0303, declaredLen: 0x8000, actualLen: 1400, cipherSuites: [0xc02f] },
+    packet: { srcIp: "203.0.113.90", user: "unknown", protocol: "AnyConnect SSL", service: GW, tlsVersion: 0x0303, declaredLen: 3000, actualLen: 1400, cipherSuites: [0xc02f] },
     ruleOverride: { protocol: "AnyConnect SSL", declaredLenAbove: 0x0800 },
   },
   {

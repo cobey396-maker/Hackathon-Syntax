@@ -6,7 +6,7 @@ import { initialState, nextAutoAction, reduce } from "@/lib/simulation/engine";
 import type { Action, SimState } from "@/lib/simulation/types";
 
 export const PERSONAS = ["Demo Analyst · Tier 2", "Demo Analyst · Tier 3", "Demo SOC Lead"];
-const STEP_MS = 650;
+const STEP_MS = 900; // slow enough for an audience to follow each step
 
 type Ctx = {
   state: SimState;
