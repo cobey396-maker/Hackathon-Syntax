@@ -1,18 +1,47 @@
 "use client";
-// Live inline topology: each handshake is a dot. Clean ones pass the AI Shield and the
-// firewall into the LAN; threats are diverted at the shield into the sandbox.
+// Packet map: the real network path across the top, the investigation loop underneath.
+// Every handshake is a dot. Clean ones travel to the company network, threats are diverted
+// into the sandbox, and repeats of a patched attack stop at the AI Shield.
 import { useEffect, useRef, useState } from "react";
+import { Building2, FlaskConical, Laptop, ScanSearch, ShieldCheck, ShieldPlus, UserCheck, type LucideIcon } from "lucide-react";
 import type { Stats, TrafficEvent } from "@/lib/types";
-import { Pane } from "./soc";
 
-const CLEAN = "M150 40 L830 40";
-const THREAT = "M150 40 L440 40 Q490 40 490 90";
-const REFUSED = "M150 40 L284 40"; // stopped at the shield by a deployed patch
+const W = 1000;
+const H = 430;
+const HEX = { line: "#1d3b5f", dim: "#64809f", blue: "#049fd9", red: "#ff5c55", amber: "#fbab18", green: "#6cc04a", panel: "#0b1e36" };
 
+type NodeId = "device" | "shield" | "firewall" | "network" | "patch" | "analyst" | "sandbox";
+type NodeState = "idle" | "active" | "bad" | "ok" | "warn";
+
+const NODES: { id: NodeId; icon: LucideIcon; title: string; x: number; y: number }[] = [
+  { id: "device", icon: Laptop, title: "Remote user", x: 90, y: 110 },
+  { id: "shield", icon: ScanSearch, title: "AI Shield", x: 370, y: 110 },
+  { id: "firewall", icon: ShieldCheck, title: "Firewall", x: 680, y: 110 },
+  { id: "network", icon: Building2, title: "Company network", x: 910, y: 110 },
+  { id: "patch", icon: ShieldPlus, title: "Virtual patch", x: 370, y: 320 },
+  { id: "analyst", icon: UserCheck, title: "Analyst", x: 580, y: 320 },
+  { id: "sandbox", icon: FlaskConical, title: "Sandbox + Claude", x: 790, y: 320 },
+];
+
+const DIVERT = "M370 110 H500 C500 270 790 190 790 320";
+const ROUTE: Record<TrafficEvent["verdict"], { d: string; color: string; dur: number; r: number }> = {
+  allowed: { d: "M90 110 H910", color: "#e6f6fd", dur: 2.4, r: 4.5 },
+  sandboxed: { d: `M90 110 H370 ${DIVERT.slice(DIVERT.indexOf("H"))}`, color: HEX.red, dur: 2.6, r: 6.5 },
+  blocked: { d: "M90 110 H322", color: HEX.amber, dur: 1.1, r: 6.5 },
+};
+
+const NODE_CLASS: Record<NodeState, string> = {
+  idle: "border-line bg-panel-2 text-dim",
+  active: "border-cisco bg-cisco/15 text-sky",
+  bad: "border-crit bg-crit/15 text-crit-hi",
+  ok: "border-ok bg-ok/15 text-ok-hi",
+  warn: "border-warn bg-warn/15 text-warn-hi",
+};
+const NOTE_CLASS: Record<NodeState, string> = { idle: "text-dim", active: "text-sky", bad: "text-crit-hi", ok: "text-ok-hi", warn: "text-warn-hi" };
+const STATE_HEX: Record<NodeState, string> = { idle: HEX.line, active: HEX.blue, bad: HEX.red, ok: HEX.green, warn: HEX.amber };
+
+// One handshake: travels its route once, then fades. Replays real arrival spacing, ~1.5 s behind the wire.
 function Dot({ ev, now }: { ev: TrafficEvent; now: number }) {
-  const threat = ev.verdict === "sandboxed";
-  const refused = ev.verdict === "blocked";
-  // replay real arrival spacing, ~1.5 s behind the wire; captured once at mount
   const [delay] = useState(() => Math.max(0, 1.5 - (now - Date.parse(ev.ts)) / 1000));
   const motion = useRef<SVGAnimateMotionElement>(null);
   const fade = useRef<SVGAnimateElement>(null);
@@ -20,64 +49,123 @@ function Dot({ ev, now }: { ev: TrafficEvent; now: number }) {
     motion.current?.beginElementAt(delay);
     fade.current?.beginElementAt(delay);
   }, [delay]);
-  const dur = threat ? "1.1s" : refused ? "0.7s" : "1.6s";
+  const r = ROUTE[ev.verdict];
   return (
-    <circle r={threat || refused ? 5 : 3.5} fill={threat ? "#f87171" : refused ? "#c858ff" : "#049fd9"} opacity="0">
-      <animateMotion ref={motion} begin="indefinite" dur={dur} path={threat ? THREAT : refused ? REFUSED : CLEAN} fill="freeze" />
-      <animate ref={fade} attributeName="opacity" begin="indefinite" dur={dur} values="1;1;0.9;0" keyTimes="0;0.1;0.9;1" fill="freeze" />
+    <circle r={r.r} fill={r.color} opacity="0" filter="url(#glow)">
+      <animateMotion ref={motion} begin="indefinite" dur={`${r.dur}s`} path={r.d} fill="freeze" />
+      <animate ref={fade} attributeName="opacity" begin="indefinite" dur={`${r.dur}s`} values="0;1;1;0" keyTimes="0;0.08;0.85;1" fill="freeze" />
     </circle>
   );
 }
 
-function Box({ x, y = 18, w = 130, h = 44, label, sub, stroke = "#1e2330", accent = "#f3f4f6" }: {
-  x: number; y?: number; w?: number; h?: number; label: string; sub: string; stroke?: string; accent?: string;
+export default function Topology({
+  traffic,
+  stats,
+  now,
+  pending,
+  critical,
+  patches,
+  quarantines,
+}: {
+  traffic: TrafficEvent[];
+  stats: Stats;
+  now: number;
+  pending: number; // held packets waiting for a human
+  critical: number; // of those, how many are under the Critical Response Protocol
+  patches: number; // approved virtual patches live at the edge
+  quarantines: number;
 }) {
-  return (
-    <g>
-      <rect x={x} y={y} width={w} height={h} fill="#11141b" stroke={stroke} strokeWidth="1.25" />
-      <text x={x + 10} y={y + 18} fill={accent} fontSize="12" fontWeight="600" fontFamily="var(--font-mono)" letterSpacing="0.5">{label}</text>
-      <text x={x + 10} y={y + 34} fill="#5b6476" fontSize="11" fontFamily="var(--font-mono)">{sub}</text>
-    </g>
-  );
-}
-
-export default function Topology({ traffic, stats, now }: { traffic: TrafficEvent[]; stats: Stats; now: number }) {
   const live = traffic.filter((e) => now - Date.parse(e.ts) < 3000);
   const hit = traffic.find((e) => e.verdict === "sandboxed" && now - Date.parse(e.ts) < 2500);
   const refused = traffic.find((e) => e.verdict === "blocked" && now - Date.parse(e.ts) < 2500);
 
+  const loop: NodeState = pending === 0 ? "idle" : critical ? "bad" : "warn";
+  const state: Record<NodeId, NodeState> = {
+    device: stats.seen ? "active" : "idle",
+    shield: refused ? "warn" : hit ? "bad" : "active",
+    firewall: stats.legit ? "ok" : "idle",
+    network: stats.legit ? "ok" : "idle",
+    sandbox: loop,
+    analyst: pending ? "active" : "idle",
+    patch: patches ? "ok" : "idle",
+  };
+  const note: Record<NodeId, string> = {
+    device: `${stats.seen.toLocaleString("en-US")} handshakes`,
+    shield: refused ? `Refused by ${refused.ruleId}` : hit ? "Held a handshake" : `Inline · ${stats.avgVerdictMs.toFixed(2)} ms`,
+    firewall: `${stats.crashesPrevented} crash${stats.crashesPrevented === 1 ? "" : "es"} avoided`,
+    network: `${stats.legit.toLocaleString("en-US")} sessions`,
+    sandbox: `${stats.sandboxed} held so far`,
+    analyst: pending ? `${pending} waiting` : "Nothing waiting",
+    patch: quarantines ? `${patches} live · ${quarantines} quarantined` : `${patches} live at the edge`,
+  };
+
+  const edges: { id: string; d: string; state: NodeState; flow?: boolean; dashed?: boolean }[] = [
+    { id: "main", d: "M90 110 H910", state: "idle" },
+    { id: "divert", d: DIVERT, state: loop, flow: pending > 0 },
+    { id: "sbx_an", d: "M790 320 H580", state: loop, flow: pending > 0 },
+    { id: "an_fix", d: "M580 320 H370", state: patches ? "ok" : "idle" },
+    { id: "fix_sh", d: "M370 320 V110", state: patches ? "ok" : "idle", flow: patches > 0, dashed: true },
+  ];
+
   return (
-    <Pane
-      title="Inline packet path"
-      meta={
-        <>
-          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-cisco" />clean</span>
-          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />held</span>
-          <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-neon-hi" />refused by patch</span>
-        </>
-      }
-      className="shrink-0"
-    >
-      <svg viewBox="0 0 1000 132" className="h-36 w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Packet path: internet, AI Shield, firewall, LAN; threats diverted to sandbox">
-        {/* wires */}
-        <path d={CLEAN} stroke="#1e2330" strokeWidth="2" fill="none" />
-        <path d="M420 40 L440 40 Q490 40 490 90" stroke="#3b1d1d" strokeWidth="2" strokeDasharray="4 4" fill="none" />
-        <text x="505" y="70" fill="#5b6476" fontSize="10" fontFamily="var(--font-mono)">divert</text>
+    <div className="overflow-x-auto">
+      <div className="relative mx-auto min-w-3xl" style={{ aspectRatio: `${W} / ${H}` }}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full overflow-visible" aria-hidden>
+          <defs>
+            <filter id="glow" filterUnits="userSpaceOnUse" x="-50" y="-50" width={W + 100} height={H + 100}>
+              <feGaussianBlur stdDeviation="4" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
 
-        {live.map((e) => <Dot key={e.seq} ev={e} now={now} />)}
+          <text x="0" y="28" fill={HEX.dim} fontSize="13" letterSpacing="2">MAIN PATH</text>
+          <rect x="285" y="238" width="590" height="184" rx="28" fill="none" stroke={HEX.line} strokeDasharray="4 8" />
+          <text x="440" y="262" fill={HEX.dim} fontSize="13" letterSpacing="2">INVESTIGATION LOOP</text>
+          <text x="358" y="222" fill={HEX.dim} fontSize="13" textAnchor="end">installs fix ↑</text>
 
-        <Box x={20} label="INTERNET" sub={`${stats.seen} handshakes`} />
-        <Box
-          x={290}
-          label="AI SHIELD"
-          sub={refused ? `REFUSED · ${refused.ruleId}` : `inline · ${stats.avgVerdictMs.toFixed(2)} ms`}
-          stroke={refused ? "#c858ff" : hit ? "#f87171" : "#049fd9"}
-          accent="#049fd9"
-        />
-        <Box x={560} label="FIREWALL" sub={`ASA/FTD · ${stats.crashesPrevented} crashes avoided`} w={150} />
-        <Box x={830} label="LAN" sub={`${stats.legit} sessions`} />
-        <Box x={425} y={90} h={38} w={150} label="SANDBOX" sub={`${stats.sandboxed} held`} stroke="#5b2a2a" accent="#f87171" />
-      </svg>
-    </Pane>
+          {edges.map((e) => {
+            const idle = e.state === "idle";
+            return (
+              <g key={e.id}>
+                <path d={e.d} fill="none" stroke={STATE_HEX[e.state]} strokeWidth={idle ? 3 : 5} strokeLinecap="round" strokeDasharray={e.dashed ? "10 10" : undefined} opacity={idle ? 0.8 : 1} filter={idle ? undefined : "url(#glow)"} />
+                {e.flow && <path d={e.d} fill="none" stroke="#ffffff" strokeOpacity="0.55" strokeWidth="2" strokeLinecap="round" className="dash-flow" />}
+              </g>
+            );
+          })}
+
+          {live.map((e) => (
+            <Dot key={e.seq} ev={e} now={now} />
+          ))}
+
+          {/* repeat attacks stop here */}
+          {refused && (
+            <g transform="translate(300 110)">
+              <circle r="16" fill={HEX.panel} stroke={HEX.amber} strokeWidth="3" />
+              <path d="M-7 -7 L7 7 M7 -7 L-7 7" stroke={HEX.amber} strokeWidth="3.5" strokeLinecap="round" />
+            </g>
+          )}
+        </svg>
+
+        {NODES.map((n) => {
+          const st = state[n.id];
+          return (
+            <div key={n.id} className="absolute flex w-44 flex-col items-center text-center" style={{ left: `${(n.x / W) * 100}%`, top: `${(n.y / H) * 100}%`, transform: "translate(-50%, -38px)" }}>
+              <span className="rounded-2xl bg-panel">
+                <span className={`flex h-19 w-19 items-center justify-center rounded-2xl border-2 transition-all duration-500 ${NODE_CLASS[st]} ${st === "bad" ? "animate-pulse" : ""}`}>
+                  <n.icon className="h-9 w-9" />
+                </span>
+              </span>
+              <span className="mt-2 rounded-md bg-panel px-2">
+                <span className={`block font-semibold whitespace-nowrap ${st === "idle" ? "text-dim" : "text-ink"}`}>{n.title}</span>
+                <span className={`block text-sm whitespace-nowrap ${NOTE_CLASS[st]}`}>{note[n.id]}</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

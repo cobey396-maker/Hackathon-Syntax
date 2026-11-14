@@ -1,4 +1,4 @@
-"""Mock VPN traffic for the Virtual Patch Sandbox dashboard.
+"""Mock VPN traffic for the ShieldOps dashboard.
 
 Streams legitimate remote-worker AnyConnect/IKEv2 logins (green). Press a hotkey to inject
 a malformed, zero-day VPN handshake (magenta), modelled on a VPN-parser overflow. Simulated;
@@ -211,7 +211,7 @@ def main():
     if os.name == "nt":
         os.system("")  # enable ANSI colours
     with Keys() as keys:
-        print(f"{BOLD}Virtual Patch Sandbox traffic simulator{RESET}  ->  {args.url}")
+        print(f"{BOLD}ShieldOps traffic simulator{RESET}  ->  {args.url}")
         if keys.line_mode:
             print(f"{DIM}(this terminal doesn't pass single keys: type the key, then press Enter){RESET}")
         print(f"{DIM}legit logins at {args.rate}/s.  Press {RESET}{BOLD}z{RESET}{DIM} to inject a zero-day ({RESET}{BOLD}c{RESET}{DIM} = always critical), {RESET}{BOLD}r{RESET}{DIM} to replay the last one, {RESET}{BOLD}q{RESET}{DIM} to quit.{RESET}\n")

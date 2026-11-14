@@ -1,70 +1,59 @@
 import type { SandboxItem } from "@/lib/types";
-import { Confidence, CritBadge, hhmmss, mmss, Pane, Sev, StatusPill, td, th } from "./soc";
+import { Badge, Confidence, CritBadge, Empty, hhmmss, Kbd, mmss, Sev, StatusPill } from "./soc";
 
+// Held handshakes as a list of rows: pending first, newest first. Click a row to open its story.
 export default function SandboxQueue({ items, now, onOpen }: { items: SandboxItem[]; now: number; onOpen: (id: string) => void }) {
-  // Pending first, newest first
   const rows = [...items].sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending") || b.ts.localeCompare(a.ts));
 
+  if (rows.length === 0)
+    return (
+      <Empty>
+        No threats yet. Press <Kbd>C</Kbd> to run the attack demo, or <Kbd>Z</Kbd> to send a zero-day handshake.
+      </Empty>
+    );
+
   return (
-    <Pane title="Active Sandbox Queue" meta={<span>{rows.length} intercepted · click a row to inspect</span>} className="flex-1">
-      {rows.length === 0 ? (
-        <p className="p-8 text-center text-sm text-muted">
-          No packets held. Press <kbd className="border bg-bg px-1.5 font-mono text-ink">Z</kbd> to inject a zero-day handshake, or{" "}
-          <kbd className="border bg-bg px-1.5 font-mono text-ink">C</kbd> for a critical one.
-        </p>
-      ) : (
-        <table className="w-full">
-          <thead>
-            <tr>
-              {["Timestamp", "ID", "Source IP", "Attack (AI)", "Threat Confidence", "Severity", "Status"].map((h) => (
-                <th key={h} className={th}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((i) => {
-              const fresh = i.status === "pending" && now - Date.parse(i.ts) < 6000;
-              return (
-                <tr
-                  key={i.id}
-                  onClick={() => onOpen(i.id)}
-                  className={`cursor-pointer border-b border-line/60 transition-colors hover:bg-neon/5 ${fresh ? "animate-pulse bg-red-500/10" : ""}`}
-                >
-                  <td className={`${td} font-mono text-muted`}>
-                    {hhmmss(i.ts)}
-                    {fresh && <span className="ml-2 bg-red-500 px-1 font-mono text-xs font-bold text-white">NEW</span>}
-                  </td>
-                  <td className={`${td} font-mono`}>{i.id}</td>
-                  <td className={`${td} font-mono`}>{i.srcIp}</td>
-                  <td className={td}>
-                    {i.ai.status === "grading" ? <span className="animate-pulse font-mono text-xs text-cisco">Claude grading…</span> : i.ai.attackClass}
-                    <div className="font-mono text-xs text-dim">
-                      {i.protocol} · {i.ai.engine === "claude" ? "Claude" : "rules"}
-                    </div>
-                  </td>
-                  <td className={td}>{i.ai.status === "grading" ? <span className="text-dim">—</span> : <Confidence value={i.confidence} />}</td>
-                  <td className={td}>{i.ai.status === "grading" ? <span className="text-dim">—</span> : <Sev value={i.severity} bar />}</td>
-                  <td className={`${td} whitespace-nowrap`}>
-                    {i.crp && i.status === "pending" ? (
-                      <span className="flex items-center gap-2">
-                        <CritBadge />
-                        <span className={`font-mono text-xs ${Date.parse(i.crp.slaDeadline) < now ? "text-red-400" : "text-amber-300"}`}>
-                          {Date.parse(i.crp.slaDeadline) < now ? "SLA BREACHED" : `SLA ${mmss(Date.parse(i.crp.slaDeadline) - now)}`}
-                        </span>
-                        <span className="font-mono text-xs text-muted">{i.crp.signoffs.length}/2 signed</span>
-                      </span>
-                    ) : (
-                      <StatusPill status={i.status} />
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </Pane>
+    <ul className="grid max-h-96 gap-2 overflow-y-auto pr-1">
+      {rows.map((i) => {
+        const fresh = i.status === "pending" && now - Date.parse(i.ts) < 6000;
+        const grading = i.ai.status === "grading";
+        const breached = i.crp ? Date.parse(i.crp.slaDeadline) < now : false;
+        return (
+          <li key={i.id}>
+            <button
+              onClick={() => onOpen(i.id)}
+              className={`flex w-full flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border px-4 py-3 text-left transition-colors hover:border-cisco ${fresh ? "border-crit/60 bg-crit/10" : "bg-bg/40"}`}
+            >
+              <div className="min-w-0 flex-1 basis-64">
+                <p className="flex items-center gap-2 font-medium">
+                  <span className="truncate">{grading ? <span className="animate-pulse text-sky">Claude is grading…</span> : i.ai.attackClass}</span>
+                  {fresh && <span className="shrink-0 animate-pulse rounded-full bg-crit px-2 text-xs font-bold text-white">NEW</span>}
+                </p>
+                <p className="truncate text-sm text-muted">
+                  {i.id} · {i.srcIp} · {hhmmss(i.ts)} UTC · {i.protocol}
+                </p>
+              </div>
+              <div className="hidden w-28 shrink-0 md:block">{grading ? <span className="text-dim">—</span> : <Confidence value={i.confidence} />}</div>
+              <div className="w-32 shrink-0">{grading ? <span className="text-dim">—</span> : <Sev value={i.severity} bar />}</div>
+              <div className="flex w-52 shrink-0 flex-col items-end gap-1">
+                {i.crp && i.status === "pending" ? (
+                  <>
+                    <CritBadge />
+                    <span className={`text-xs whitespace-nowrap ${breached ? "text-crit-hi" : "text-warn-hi"}`}>
+                      {breached ? "SLA breached" : `SLA ${mmss(Date.parse(i.crp.slaDeadline) - now)}`}
+                      <span className="text-muted"> · {i.crp.signoffs.length}/2 signed</span>
+                    </span>
+                  </>
+                ) : i.status === "pending" && grading ? (
+                  <Badge tone="info">Grading</Badge>
+                ) : (
+                  <StatusPill status={i.status} />
+                )}
+              </div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -1,13 +1,20 @@
 "use client";
+// App shell: sticky header with three tabs. Opening a threat shows its story in place of the tab.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { RotateCcw } from "lucide-react";
 import type { DashboardState, Decision, SandboxItem } from "@/lib/types";
 import AuditLedger from "./AuditLedger";
-import DeployedPatches from "./DeployedPatches";
-import InspectionModal from "./InspectionModal";
-import SandboxQueue from "./SandboxQueue";
-import Sidebar, { type View } from "./Sidebar";
-import Topology from "./Topology";
+import Overview from "./Overview";
+import ShieldOpsLogo from "./ShieldOpsLogo";
+import ThreatStory from "./ThreatStory";
 import TrafficFeed from "./TrafficFeed";
+
+type View = "overview" | "ledger" | "traffic";
+const TABS: [View, string][] = [
+  ["overview", "Overview"],
+  ["ledger", "Audit ledger"],
+  ["traffic", "Live traffic"],
+];
 
 const ANALYSTS = ["J. Rivera · Tier 2", "A. Chen · Tier 3", "M. Okafor · SOC Lead"];
 const EMPTY: DashboardState = {
@@ -23,7 +30,7 @@ const EMPTY: DashboardState = {
 
 export default function Dashboard() {
   const [state, setState] = useState<DashboardState>(EMPTY);
-  const [view, setView] = useState<View>("queue");
+  const [view, setView] = useState<View>("overview");
   const [openId, setOpenId] = useState<string | null>(null);
   const [toast, setToast] = useState<SandboxItem | null>(null);
   const [analyst, setAnalyst] = useState(ANALYSTS[0]);
@@ -70,8 +77,8 @@ export default function Dashboard() {
       const r = await fetch("/api/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
       const res = await r.json().catch(() => ({}));
       if (!r.ok) setNotice({ text: res.error ?? "simulate failed", tone: "info" });
-      else if (res.verdict === "blocked") setNotice({ text: `ERR_CONNECTION_REFUSED · ${res.srcIp} blocked by ${res.ruleId}`, tone: "refused" });
-      else if (res.verdict === "sandboxed" && kind === "r") setNotice({ text: `Replay from ${res.srcIp} held again as ${res.id}: no patch approved yet`, tone: "info" });
+      else if (res.verdict === "blocked") setNotice({ text: `Connection refused: ${res.srcIp} was blocked at the edge by ${res.ruleId} before it reached the firewall.`, tone: "refused" });
+      else if (res.verdict === "sandboxed" && kind === "r") setNotice({ text: `Replay from ${res.srcIp} was held again as ${res.id}: no fix has been approved yet.`, tone: "info" });
       load();
     },
     [load],
@@ -94,7 +101,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!notice) return;
-    const t = setTimeout(() => setNotice(null), 5000);
+    const t = setTimeout(() => setNotice(null), 6000);
     return () => clearTimeout(t);
   }, [notice]);
 
@@ -132,88 +139,135 @@ export default function Dashboard() {
       setState(body);
       const it = (body as DashboardState).items.find((i) => i.id === openId);
       if (it?.crp && it.status === "pending" && it.crp.signoffs.length === 1)
-        setNotice({ text: `Signature 1 of 2 recorded (${analyst}). Switch analyst in the sidebar to co-sign.`, tone: "info" });
+        setNotice({ text: `Signature 1 of 2 recorded (${analyst}). Switch analyst in the header to co-sign.`, tone: "info" });
     } else setNotice({ text: body.error ?? "decision failed", tone: "info" });
     setBusy(false);
   };
+
+  // Two-step reset so a stray click mid-demo doesn't wipe the run
+  const [arm, setArm] = useState(false);
+  useEffect(() => {
+    if (!arm) return;
+    const t = setTimeout(() => setArm(false), 3000);
+    return () => clearTimeout(t);
+  }, [arm]);
 
   const resetDemo = async () => {
     const r = await fetch("/api/reset", { method: "POST" });
     if (!r.ok) return;
     setOpenId(null);
     setToast(null);
+    setNotice(null);
     seen.current = new Set();
     setState(await r.json());
   };
 
   const open = state.items.find((i) => i.id === openId);
   const pending = state.items.filter((i) => i.status === "pending").length;
-  const s = state.stats;
-  const kpis: [string, string, string?][] = [
-    ["Inspected", s.seen.toLocaleString("en-US")],
-    ["Clean → firewall", s.legit.toLocaleString("en-US"), "text-emerald-400"],
-    ["Held in sandbox", String(s.sandboxed), "text-red-400"],
-    ["Pending review", String(pending), pending ? "text-amber-300" : undefined],
-    ["Patches approved", String(s.patched), "text-neon-hi"],
-    ["Overrides", String(s.allowed)],
-    ["Refused at edge", String(s.blockedAtEdge), "text-neon-hi"],
-    ["Crashes prevented", String(s.crashesPrevented), "text-cisco"],
-    ["Avg AI verdict", `${s.avgVerdictMs.toFixed(2)} ms`, "text-cisco"],
-  ];
 
   return (
-    <div className="h-full">
-      <Sidebar view={view} onView={setView} pending={pending} simOnline={state.simOnline} analyst={analyst} analysts={ANALYSTS} onAnalyst={pickAnalyst} onReset={resetDemo} autoTraffic={autoTraffic} onAutoTraffic={setAutoTraffic} onKey={simulate} />
+    <div className="min-h-full">
+      <div className="aurora" aria-hidden>
+        <span />
+        <span />
+      </div>
 
-      <main className="flex h-full flex-col gap-px overflow-auto bg-line pl-64">
-        <div className="grid shrink-0 grid-cols-4 bg-panel lg:grid-cols-9">
-          {kpis.map(([label, value, color]) => (
-            <div key={label} className="border-r border-b px-4 py-2.5 last:border-r-0">
-              <p className="text-xs tracking-wider text-dim uppercase">{label}</p>
-              <p className={`mt-0.5 font-mono text-lg font-medium tabular-nums ${color ?? "text-ink"}`}>{value}</p>
-            </div>
-          ))}
+      <header className="sticky top-0 z-20 border-b bg-bg/75 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
+          <ShieldOpsLogo variant="horizontal" theme="dark" size={36} knockout="#061426" />
+
+          <nav className="flex gap-1" aria-label="Sections">
+            {TABS.map(([key, label]) => {
+              const active = view === key && !open;
+              return (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setView(key);
+                    setOpenId(null);
+                  }}
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium whitespace-nowrap ${active ? "bg-panel-2 text-ink" : "text-muted hover:text-ink"}`}
+                >
+                  {label}
+                  {key === "overview" && pending > 0 && <span className="ml-2 rounded-full bg-cisco px-1.5 text-xs text-white">{pending}</span>}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setAutoTraffic(!autoTraffic)}
+              aria-pressed={autoTraffic}
+              title="Background stream of normal logins, one per second"
+              className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold tracking-wider ${autoTraffic ? "border-ok/40 bg-ok/10 text-ok-hi" : "text-muted"}`}
+            >
+              <span className={`h-2 w-2 rounded-full ${autoTraffic ? "live-dot bg-ok" : "bg-dim"}`} />
+              {autoTraffic ? "LIVE" : "PAUSED"}
+            </button>
+            <select value={analyst} onChange={(e) => pickAnalyst(e.target.value)} aria-label="Analyst on duty" className="h-9 rounded-lg border bg-panel px-2 text-sm focus:border-cisco focus:outline-none">
+              {ANALYSTS.map((a) => (
+                <option key={a}>{a}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => {
+                if (arm) {
+                  setArm(false);
+                  resetDemo();
+                } else setArm(true);
+              }}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm whitespace-nowrap ${arm ? "bg-crit/15 text-crit-hi" : "text-muted hover:bg-panel-2 hover:text-ink"}`}
+            >
+              <RotateCcw className="h-4 w-4" /> {arm ? "Click again to reset" : "Reset"}
+            </button>
+          </div>
         </div>
+      </header>
 
-        {view === "queue" && (
-          <>
-            <Topology traffic={state.traffic} stats={state.stats} now={state.now} />
-            <SandboxQueue items={state.items} now={state.now} onOpen={setOpenId} />
-            <DeployedPatches deployed={state.deployed} now={state.now} />
-          </>
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        {notice && (
+          <p
+            className={`mb-6 flex items-center justify-between gap-4 rounded-xl px-4 py-3 animate-in fade-in-0 slide-in-from-top-2 ${
+              notice.tone === "refused" ? "bg-ok/10 text-ok-hi" : "bg-cisco/10 text-ink"
+            }`}
+            aria-live="polite"
+          >
+            <span className="min-w-0 break-words">{notice.text}</span>
+            <button onClick={() => setNotice(null)} className="shrink-0 text-sm text-muted hover:text-ink">
+              Dismiss
+            </button>
+          </p>
         )}
-        {view === "ledger" && <AuditLedger ledger={state.ledger} source={state.ledgerSource} />}
-        {view === "traffic" && <TrafficFeed traffic={state.traffic} />}
+
+        {open ? (
+          <ThreatStory key={open.id} now={state.now} item={open} ledger={state.ledger} patch={state.deployed.find((d) => d.itemId === open.id)} analyst={analyst} busy={busy} onClose={() => setOpenId(null)} onDecide={decide} />
+        ) : view === "overview" ? (
+          <Overview state={state} pending={pending} live={autoTraffic} onLive={setAutoTraffic} onKey={simulate} onOpen={setOpenId} />
+        ) : view === "ledger" ? (
+          <AuditLedger ledger={state.ledger} source={state.ledgerSource} />
+        ) : (
+          <TrafficFeed traffic={state.traffic} />
+        )}
       </main>
 
-      {open && <InspectionModal key={open.id} now={state.now} item={open} ledger={state.ledger} patch={state.deployed.find((d) => d.itemId === open.id)} analyst={analyst} busy={busy} onClose={() => setOpenId(null)} onDecide={decide} />}
-
-      {notice && (
-        <div
-          className={`fixed top-4 left-1/2 z-[60] -translate-x-1/2 border px-4 py-2.5 font-mono text-sm shadow-2xl animate-in fade-in-0 slide-in-from-top-2 ${
-            notice.tone === "refused" ? "border-neon bg-panel text-neon-hi" : "border-line bg-panel text-muted"
-          }`}
-        >
-          {notice.text}
-        </div>
-      )}
-
       {toast && !open && (
-        <div className="fixed right-5 bottom-5 z-40 flex items-center gap-4 border border-red-500/60 bg-panel px-4 py-3 shadow-2xl animate-in slide-in-from-bottom-4">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-          <div className="text-sm">
+        <div className="shadow-card fixed right-5 bottom-5 z-40 flex max-w-md items-center gap-4 rounded-2xl border border-crit/60 bg-panel px-4 py-3 animate-in slide-in-from-bottom-4">
+          <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-crit" />
+          <div className="min-w-0">
             <p className="font-semibold">Zero-day held in sandbox</p>
-            <p className="font-mono text-xs text-muted">
-              {toast.id} · {toast.srcIp} · {toast.ai.status === "grading" ? "Claude grading…" : `severity ${toast.severity}/10 · ${toast.confidence}%`}
+            <p className="truncate text-sm text-muted">
+              {toast.id} · {toast.srcIp} · {toast.ai.status === "grading" ? "Claude grading…" : `severity ${toast.severity}/10`}
             </p>
           </div>
           <button
             onClick={() => {
-              setView("queue");
+              setView("overview");
               setOpenId(toast.id);
               setToast(null);
             }}
-            className="bg-neon px-3 py-1.5 text-sm font-semibold text-white hover:bg-neon-hi"
+            className="shrink-0 rounded-xl bg-cisco px-4 py-2 text-sm font-semibold text-white hover:bg-sky"
           >
             Inspect
           </button>

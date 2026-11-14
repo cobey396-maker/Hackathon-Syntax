@@ -1,4 +1,4 @@
--- Audit ledger for Virtual Patch Sandbox. Run once in the Supabase SQL editor.
+-- Audit ledger for ShieldOps. Run once in the Supabase SQL editor.
 -- Every analyst decision on an AI-drafted virtual patch lands here, append-only.
 
 create table if not exists public.audit_ledger (

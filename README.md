@@ -1,4 +1,4 @@
-# Virtual Patch Sandbox
+# ShieldOps
 
 Cisco **Digital Shield** track prototype. An enterprise SOC dashboard where an AI sits in front of the VPN firewall, intercepts zero-day handshakes, and holds them in a sandbox. The AI grades the packet (1–10), explains its reasoning, detonates the packet in a honeypot, and drafts a **virtual patch**. **A human analyst must review the evidence and click Approve before the rule is applied**, and every decision is written to an audit ledger with the analyst's name.
 
@@ -71,6 +71,37 @@ The decision lifts the quarantine; an approval replaces it with the virtual patc
 
 No attack type ever crossed the critical line in the wrong direction: none of the mild types reached 7, and every overflow did.
 
+### Held-out attacks: what it misses
+
+The attacks above were written alongside the rules that catch them, so 100% there is partly circular. To test the shield honestly, the benchmark also sends **five attack types the rules were never written for** (10 each, `HELDOUT` in `lib/sim.ts`):
+
+| Held-out attack | Caught by inspection | Why |
+|---|---:|---|
+| SSL 3.0 downgrade | 10/10 | The version check generalizes: anything outside TLS 1.0–1.3 is held. Graded 2. |
+| Length underflow (header claims fewer bytes than sent) | 7/10* | The length-consistency check generalizes. Graded 4–5. |
+| Zero-length record | 0/10 | Declared and actual lengths agree (both 0), so it looks structurally valid. |
+| Extensions-length overflow | 0/10 | The lie is inside the extensions block, which the shield doesn't parse. |
+| Buffer-boundary probe (length just under the parser buffer) | 0/10 | Consistent and under the limit. The baseline check sees it as a huge outlier, but that check is a signal only, not a trigger. |
+| **Total** | **17/50 (34%)** | 6 more were refused at the edge only because their random source IP was already quarantined; not counted as detection. |
+
+\* The other 3 were refused at the edge first (their source was already quarantined). They would trip the same length check.
+
+**What this tells us:** the structural rules generalize to new attacks *within* the fields they inspect, and miss attacks in fields they don't (extensions) or attacks that stay structurally valid. Claude can't rescue a miss, because it only grades packets the inline shield has already held. The clear next steps are parsing the extensions block and letting a large baseline outlier (the boundary probe is far outside normal login sizes) send a packet to review instead of only adding a signal.
+
+### Time to patch
+
+One trial per attack type: send the attack, let Claude grade it, sign the approval (two signers at severity 7+), and confirm an identical replay is refused at the edge.
+
+| Attack | Severity | Held inline | Claude graded | Patch live | Replay refused |
+|---|---:|---:|---:|---:|---:|
+| Version probe | 2 | 25 ms | 3.3 s | 3.5 s | yes |
+| Cipher fuzz | 2 | 24 ms | 5.7 s | 5.9 s | yes |
+| Length desync | 5 | 27 ms | 4.6 s | 5.0 s | yes |
+| Desync + fuzz | 6 | 28 ms | 3.8 s | 3.9 s | yes |
+| Overflow | 9 (2 signers) | 21 ms | 7.5 s | 7.8 s | yes |
+
+**The system's own work takes under 8 seconds from first packet to a live virtual patch.** In practice the analyst's review is the real bottleneck: minutes, with a 5-minute SLA at severity 7+. That is still minutes, not the days or weeks it takes to wait for a vendor firmware fix and roll it out. The attack is held at the edge the whole time, so the firewall's parser is never exposed while people decide.
+
 | Step | p50 | p95 |
 |---|---:|---:|
 | Inline verdict (HTTP round trip on localhost, includes Next.js overhead) | 12.1 ms | 31.3 ms |
@@ -79,7 +110,7 @@ No attack type ever crossed the critical line in the wrong direction: none of th
 ## Limitations & Safeguards
 
 **Limitations (what this prototype does not prove)**
-- **Simulated traffic only.** Attacks and logins come from our generator (`lib/sim.ts`), so 100% detection means "catches the attack types we modeled," not "catches real zero-days." The next step is replaying real pcaps (e.g. public TLS fuzzing corpora) through `/api/traffic`.
+- **Simulated traffic only.** Attacks and logins come from our generator (`lib/sim.ts`), so 100% detection means "catches the attack types we modeled," not "catches real zero-days." On attack types the rules weren't written for, inspection caught **34%** (see Held-out attacks). The next step is replaying real pcaps (e.g. public TLS fuzzing corpora) through `/api/traffic`.
 - **Detection is structural.** The inline shield catches handshakes that break the protocol's structure. An exploit hidden inside a *well-formed* handshake would pass. Claude grades and explains *after* a packet is flagged; it does not decide what gets flagged.
 - **The honeypot is simulated.** It predicts crash / leak / timeout from the packet's fields; it doesn't run real firewall firmware.
 - **Claude can be wrong.** It runs at low effort for speed; small desyncs vary between 4 and 5. The rules score is always shown beside Claude's so analysts can see disagreements.
