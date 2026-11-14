@@ -48,7 +48,7 @@ function App() {
               <Shield className="h-5 w-5 text-neon-hi" />
             </span>
             <div>
-              <p className="text-lg font-semibold leading-tight">Virtual Patch Sandbox</p>
+              <p className="text-xl font-bold leading-tight tracking-tight">Shield<span className="text-neon-hi">Ops</span></p>
               <p className="text-xs text-muted">Cisco Digital Shield · HackNCAT 10.0</p>
             </div>
           </div>

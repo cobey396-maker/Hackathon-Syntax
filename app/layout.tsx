@@ -6,8 +6,8 @@ const sans = Inter({ variable: "--font-sans", subsets: ["latin"] });
 const mono = JetBrains_Mono({ variable: "--font-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Virtual Patch Sandbox",
-  description: "SOC console: AI holds zero-day VPN handshakes in a sandbox and drafts a virtual patch; an analyst approves it before it is applied",
+  title: "ShieldOps",
+  description: "ShieldOps: the AI investigates, the human authorizes, the system verifies. A frontend-only simulation of human-in-the-loop VPN threat response.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

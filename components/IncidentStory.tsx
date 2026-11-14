@@ -8,7 +8,8 @@ import { SCENARIOS } from "@/lib/simulation/scenarios";
 import { incidentById } from "@/lib/simulation/selectors";
 import type { CaseResult } from "@/lib/simulation/types";
 import HoneypotTerminal from "./HoneypotTerminal";
-import ProcessMap, { viewForIncident } from "./ProcessMap";
+import { journeyForIncident } from "./viz/journey";
+import JourneyPanel from "./viz/JourneyPanel";
 import { findingText, impactText, OUTCOME, ruleText, storyStep } from "./plain";
 import { useSimulation } from "./simulation/SimulationProvider";
 import { Badge, Card, Details, StatusBadge } from "./ui";
@@ -81,7 +82,7 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 pb-28">
+    <div className="mx-auto max-w-5xl space-y-8 pb-32">
       <button onClick={onBack} className="flex items-center gap-2 text-sm text-muted hover:text-ink">
         <ArrowLeft className="h-4 w-4" /> All threats
       </button>
@@ -117,7 +118,7 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
         })}
       </ol>
 
-      <ProcessMap view={viewForIncident(inc, state.firewall.rules.filter((r) => r.origin === "patch").length)} />
+      <JourneyPanel title="Where this connection is now" j={journeyForIncident(inc, state.firewall.rules.filter((r) => r.origin === "patch").length)} />
 
       {/* 1. Spotted */}
       <Card>
@@ -309,7 +310,7 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
       {/* continue bar */}
       {next && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 backdrop-blur">
-          <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-4">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
             <p className="text-muted">{isRunning ? "Investigating…" : "The system pauses here so you can explain each step."}</p>
             <button
               onClick={() => (isRunning ? stop() : autoRun(inc.id))}

@@ -3,7 +3,8 @@
 import { ArrowRight, CheckCircle2, FlaskConical, Radar, UserCheck } from "lucide-react";
 import { SCENARIOS } from "@/lib/simulation/scenarios";
 import { counts } from "@/lib/simulation/selectors";
-import ProcessMap, { viewForTraffic } from "./ProcessMap";
+import { journeyForTraffic } from "./viz/journey";
+import JourneyPanel from "./viz/JourneyPanel";
 import { useSimulation } from "./simulation/SimulationProvider";
 import { Card, StatusBadge } from "./ui";
 
@@ -44,7 +45,7 @@ export default function Overview({ onLaunch, onOpen }: { onLaunch: (id: string) 
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-12">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           The AI investigates. <span className="text-neon-hi">The human authorizes.</span> The system verifies.
@@ -62,7 +63,7 @@ export default function Overview({ onLaunch, onOpen }: { onLaunch: (id: string) 
         ))}
       </div>
 
-      <ProcessMap view={viewForTraffic(state.traffic[0])} title="Latest connection" />
+      <JourneyPanel title="Watch a connection travel through ShieldOps" j={journeyForTraffic(state.traffic[0])} />
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">How it works</h2>

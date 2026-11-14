@@ -35,6 +35,13 @@
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
 
+  --animate-drop: drop 1.1s ease-in infinite;
+  @keyframes drop {
+    0% { top: -12px; opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
   --animate-shake: shake 0.5s ease-in-out 2;
   --animate-flash: flash 0.35s ease-in-out 3;
   @keyframes shake {
