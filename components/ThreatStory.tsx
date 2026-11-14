@@ -182,7 +182,7 @@ export default function ThreatStory({
                 </p>
                 {verdictShown && (
                   <p className="mt-2 text-muted animate-in fade-in-0">
-                    Verdict: hold in the sandbox. {grading ? "Escalating to Claude for a severity grade…" : `Severity ${item.severity}/10, confidence ${item.confidence}%.`} Drafting virtual patch {item.ruleId}.
+                    Verdict: hold in the Holding Center. {grading ? "Escalating to Claude for a severity grade…" : `Severity ${item.severity}/10, confidence ${item.confidence}%.`} Drafting virtual patch {item.ruleId}.
                   </p>
                 )}
               </>
@@ -244,7 +244,7 @@ export default function ThreatStory({
 
           <Card>
             <StepHeader icon={FlaskConical} step={2} title="Tested safely" right={item.crashes ? "Parser crash expected" : "No crash expected"} />
-            <p className="mb-4 text-muted">Replay the held handshake against an isolated copy of the firewall parser. Nothing leaves the sandbox.</p>
+            <p className="mb-4 text-muted">Replay the held handshake against an isolated copy of the firewall parser. Nothing leaves the Holding Center.</p>
             <HoneypotTerminal key={item.id} lines={item.honeypot} crashes={item.crashes} />
           </Card>
         </div>

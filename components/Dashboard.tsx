@@ -256,7 +256,7 @@ export default function Dashboard() {
         <div className="shadow-card fixed right-5 bottom-5 z-40 flex max-w-md items-center gap-4 rounded-2xl border border-crit/60 bg-panel px-4 py-3 animate-in slide-in-from-bottom-4">
           <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-crit" />
           <div className="min-w-0">
-            <p className="font-semibold">Zero-day held in sandbox</p>
+            <p className="font-semibold">Zero-day held in the Holding Center</p>
             <p className="truncate text-sm text-muted">
               {toast.id} · {toast.srcIp} · {toast.ai.status === "grading" ? "Claude grading…" : `severity ${toast.severity}/10`}
             </p>

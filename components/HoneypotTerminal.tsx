@@ -27,7 +27,7 @@ export default function HoneypotTerminal({ lines, crashes }: { lines: string[]; 
     running: ["asa-parser-sim · running", "border-line text-muted"],
     crashed: ["asa-parser-sim · PROCESS TERMINATED (SIGSEGV)", "animate-shake animate-flash border-crit text-crit-hi"],
     degraded: ["asa-parser-sim · degraded (session table leak)", "animate-flash border-warn text-warn"],
-    contained: [crashes ? "Crash reproduced · contained in sandbox" : "Fault reproduced · contained in sandbox", "border-ok/60 text-ok"],
+    contained: [crashes ? "Crash reproduced · contained in the Holding Center" : "Fault reproduced · contained in the Holding Center", "border-ok/60 text-ok"],
   };
 
   const color = (l: string) =>
@@ -67,7 +67,7 @@ export default function HoneypotTerminal({ lines, crashes }: { lines: string[]; 
       </div>
 
       <pre className="h-44 overflow-auto p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
-        {shown === 0 && <span className="font-sans text-sm text-dim">Detonate the held packet against an isolated copy of the firewall parser. Nothing leaves the sandbox.</span>}
+        {shown === 0 && <span className="font-sans text-sm text-dim">Detonate the held packet against an isolated copy of the firewall parser. Nothing leaves the Holding Center.</span>}
         {visible.map((l, i) => (
           <div key={i} className={`${color(l)} animate-in fade-in-0 duration-200`}>
             {l}
