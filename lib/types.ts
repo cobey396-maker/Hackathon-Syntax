@@ -9,6 +9,7 @@ export type RawPacket = {
   actual_len: number;
   cipher_suites: number[];
   payload_hex: string;
+  extensions_len?: number; // declared ClientHello extensions length (only the held-out benchmark sets it)
 };
 
 // One field the AI Shield checked. bytes = inclusive offsets into SandboxItem.bytes.

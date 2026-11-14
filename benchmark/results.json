@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-11-14T06:27:49.040Z",
+  "ranAt": "2026-11-14T06:36:07.431Z",
   "url": "http://localhost:3000",
   "legit": {
     "n": 300,
@@ -41,7 +41,7 @@
       "held": 15,
       "refused": 0,
       "missed": 0,
-      "rules": 2,
+      "rules": 1,
       "graded": 15,
       "mean": 2,
       "min": 2,
@@ -51,18 +51,18 @@
       "modeShare": 1,
       "critical": 0,
       "classes": [
-        "Invalid record version (protocol oddity)",
-        "Invalid TLS record version",
-        "Unknown TLS record version"
+        "Unknown TLS record version (protocol oddity)",
+        "Unknown protocol version anomaly",
+        "Unknown protocol version (0x0305)"
       ]
     },
     "cipher-fuzz": {
       "n": 15,
-      "held": 15,
-      "refused": 0,
+      "held": 14,
+      "refused": 1,
       "missed": 0,
       "rules": 2,
-      "graded": 15,
+      "graded": 14,
       "mean": 2,
       "min": 2,
       "max": 2,
@@ -71,38 +71,38 @@
       "modeShare": 1,
       "critical": 0,
       "classes": [
-        "Empty cipher suite list ClientHello",
         "Unknown cipher suite probe",
+        "Empty cipher suite ClientHello",
         "Empty cipher suite list (protocol anomaly)"
       ]
     },
     "length-desync": {
       "n": 15,
-      "held": 15,
-      "refused": 0,
+      "held": 13,
+      "refused": 2,
       "missed": 0,
       "rules": 3,
-      "graded": 15,
-      "mean": 4.266666666666667,
+      "graded": 13,
+      "mean": 4.076923076923077,
       "min": 4,
       "max": 5,
-      "sd": 0.44221663871405337,
+      "sd": 0.26646935501059643,
       "mode": "4",
-      "modeShare": 0.7333333333333333,
+      "modeShare": 0.9230769230769231,
       "critical": 0,
       "classes": [
-        "Record length mismatch (declared > actual)",
-        "TLS record length mismatch (truncated ClientHello)",
-        "TLS record length mismatch (declared > actual)"
+        "TLS record length mismatch (truncated record)",
+        "Record length mismatch (declared > payload)",
+        "TLS record length mismatch"
       ]
     },
     "desync-fuzz": {
       "n": 15,
-      "held": 14,
-      "refused": 1,
+      "held": 15,
+      "refused": 0,
       "missed": 0,
       "rules": 5,
-      "graded": 14,
+      "graded": 15,
       "mean": 6,
       "min": 6,
       "max": 6,
@@ -111,42 +111,146 @@
       "modeShare": 1,
       "critical": 0,
       "classes": [
-        "TLS record length mismatch / session table exhaustion",
         "Handshake length mismatch with session table leak",
+        "TLS record length mismatch / session table exhaustion",
         "TLS record length mismatch with session table leak"
       ]
     },
     "overflow": {
       "n": 15,
-      "held": 15,
-      "refused": 0,
+      "held": 14,
+      "refused": 1,
       "missed": 0,
       "rules": 8,
-      "graded": 15,
-      "mean": 9.466666666666667,
+      "graded": 14,
+      "mean": 9.428571428571429,
       "min": 9,
       "max": 10,
-      "sd": 0.498887651569859,
+      "sd": 0.4948716593053934,
       "mode": "9",
-      "modeShare": 0.5333333333333333,
-      "critical": 15,
+      "modeShare": 0.5714285714285714,
+      "critical": 14,
       "classes": [
-        "TLS record length overflow",
-        "Record length overflow (parser crash)"
+        "TLS record length overflow"
       ]
     }
   },
   "detectionRate": 1,
+  "heldout": {
+    "sslv3-downgrade": {
+      "n": 10,
+      "held": 10,
+      "refused": 0,
+      "missed": 0,
+      "mean": 2,
+      "min": 2,
+      "max": 2
+    },
+    "length-underflow": {
+      "n": 10,
+      "held": 7,
+      "refused": 3,
+      "missed": 0,
+      "mean": 4.428571428571429,
+      "min": 4,
+      "max": 5
+    },
+    "zero-length-record": {
+      "n": 10,
+      "held": 0,
+      "refused": 1,
+      "missed": 9,
+      "mean": null,
+      "min": null,
+      "max": null
+    },
+    "ext-len-overflow": {
+      "n": 10,
+      "held": 0,
+      "refused": 1,
+      "missed": 9,
+      "mean": null,
+      "min": null,
+      "max": null
+    },
+    "buffer-boundary-probe": {
+      "n": 10,
+      "held": 0,
+      "refused": 1,
+      "missed": 9,
+      "mean": null,
+      "min": null,
+      "max": null
+    }
+  },
+  "heldoutDetectionRate": 0.34,
+  "timeToPatch": [
+    {
+      "tier": "version-probe",
+      "severity": 2,
+      "twoPerson": false,
+      "patched": true,
+      "replayRefused": true,
+      "tHeld": 24.88749999999709,
+      "tGraded": 3325.9683000000005,
+      "tPatched": 3541.340299999996,
+      "tRefused": 3558.9447
+    },
+    {
+      "tier": "cipher-fuzz",
+      "severity": 2,
+      "twoPerson": false,
+      "patched": true,
+      "replayRefused": true,
+      "tHeld": 24.37630000000354,
+      "tGraded": 5729.380600000004,
+      "tPatched": 5894.926500000001,
+      "tRefused": 5915.522600000004
+    },
+    {
+      "tier": "length-desync",
+      "severity": 5,
+      "twoPerson": false,
+      "patched": true,
+      "replayRefused": true,
+      "tHeld": 27.08179999999993,
+      "tGraded": 4556.846600000004,
+      "tPatched": 5047.5887000000075,
+      "tRefused": 5061.697
+    },
+    {
+      "tier": "desync-fuzz",
+      "severity": 6,
+      "twoPerson": false,
+      "patched": true,
+      "replayRefused": true,
+      "tHeld": 28.12640000000829,
+      "tGraded": 3773.6382000000012,
+      "tPatched": 3931.9416000000056,
+      "tRefused": 3961.9028000000108
+    },
+    {
+      "tier": "overflow",
+      "severity": 9,
+      "twoPerson": true,
+      "patched": true,
+      "replayRefused": true,
+      "tHeld": 20.826699999990524,
+      "tGraded": 7505.739199999996,
+      "tPatched": 7838.830599999987,
+      "tRefused": 7863.6685
+    }
+  ],
   "crpCorrect": {
-    "ok": 74,
-    "total": 74
+    "ok": 71,
+    "total": 71
   },
   "claudeFallbacks": 0,
   "fallbackNotes": [],
   "latency": {
-    "inlineRttP50": 12.106300000000374,
-    "inlineRttP95": 31.32629999999699,
-    "claudeP50": 3976,
-    "claudeP95": 5627
+    "inlineRttP50": 10.01720000000023,
+    "inlineRttP95": 25.904199999999946,
+    "claudeP50": 3962,
+    "claudeP95": 6599
   }
 }

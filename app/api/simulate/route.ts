@@ -1,4 +1,4 @@
-import { demoCritical, legit, malformed, TIERS, UNUSUAL, unusualLegit, type Tier, type Unusual } from "@/lib/sim";
+import { demoCritical, HELDOUT, heldout, legit, malformed, TIERS, UNUSUAL, unusualLegit, type Heldout, type Tier, type Unusual } from "@/lib/sim";
 import { after } from "next/server";
 import { gradeItem, ingest, lastAttack, nextTier } from "@/lib/store";
 
@@ -13,6 +13,9 @@ export async function POST(req: Request) {
   else if (kind === "attack" && TIERS.includes(want as Tier)) {
     p = malformed(want as Tier);
     tier = want as Tier;
+  } else if (kind === "heldout" && HELDOUT.includes(want as Heldout)) {
+    p = heldout(want as Heldout);
+    tier = `heldout:${want}`;
   } else if (kind === "unusual" && UNUSUAL.includes(variant as Unusual)) {
     p = unusualLegit(variant as Unusual);
     tier = `unusual:${variant}`;
@@ -29,7 +32,7 @@ export async function POST(req: Request) {
     if (!last) return Response.json({ error: "nothing to replay yet; press z or c first" }, { status: 409 });
     p = { ...last, ts: new Date().toISOString() };
     tier = "replay";
-  } else return Response.json({ error: "kind must be legit | z | c | r | attack (+tier) | unusual (+variant)" }, { status: 400 });
+  } else return Response.json({ error: "kind must be legit | z | c | r | attack (+tier) | heldout (+tier) | unusual (+variant)" }, { status: 400 });
 
   const r = ingest(p);
   if (r && "item" in r) after(() => gradeItem(r.item.id, r.packet)); // Claude grades after we respond

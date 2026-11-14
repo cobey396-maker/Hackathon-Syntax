@@ -6,6 +6,7 @@
 //
 // Resets the demo before it starts and again when it finishes (unless --keep). All traffic is simulated.
 // Writes benchmark/results.md and benchmark/results.json.
+// Time-to-patch trials approve patches as "Benchmark bot A/B"; those decisions land in the audit ledger.
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const arg = (k, d) => {
@@ -16,9 +17,12 @@ const URL_ = arg("url", "http://localhost:3000");
 const N_LEGIT = +arg("legit", 300);
 const N_UNUSUAL = +arg("unusual", 15);
 const PER_TYPE = +arg("per-type", 15);
+const PER_HELDOUT = +arg("per-heldout", 10);
 const KEEP = process.argv.includes("--keep");
 
 const TIERS = ["version-probe", "cipher-fuzz", "length-desync", "desync-fuzz", "overflow"];
+// Attack types the detector was NOT written for (lib/sim.ts HELDOUT).
+const HELDOUT = ["sslv3-downgrade", "length-underflow", "zero-length-record", "ext-len-overflow", "buffer-boundary-probe"];
 const UNUSUAL = ["legacy-tls10", "grease-cipher", "rsa-gcm-cipher", "large-pq-hello"];
 const CRITICAL = 7;
 
@@ -96,8 +100,24 @@ async function main() {
     }
   for (const t of TIERS) console.log(`  attack ${t}: ${attacks[t].held} held, ${attacks[t].refused} refused at edge, ${attacks[t].missed} missed`);
 
+  // 3b. Held-out attacks the rules were not written for
+  const held = Object.fromEntries(HELDOUT.map((t) => [t, { n: 0, held: 0, refused: 0, missed: 0, ids: [] }]));
+  for (let i = 0; i < PER_HELDOUT; i++)
+    for (const t of HELDOUT) {
+      const r = await post("/api/simulate", { kind: "heldout", tier: t });
+      const a = held[t];
+      a.n++;
+      if (r.verdict === "sandboxed") {
+        a.held++;
+        a.ids.push(r.id);
+      } else if (r.verdict === "blocked") a.refused++;
+      else a.missed++;
+      await sleep(300);
+    }
+  for (const t of HELDOUT) console.log(`  held-out ${t}: ${held[t].held} held, ${held[t].refused} refused at edge, ${held[t].missed} missed`);
+
   // 4. Wait for Claude to finish grading every held packet
-  const want = new Set([...TIERS.flatMap((t) => attacks[t].ids), ...UNUSUAL.flatMap((v) => unusual[v].ids)]);
+  const want = new Set([...TIERS.flatMap((t) => attacks[t].ids), ...HELDOUT.flatMap((t) => held[t].ids), ...UNUSUAL.flatMap((v) => unusual[v].ids)]);
   let items = [];
   const deadline = Date.now() + 180_000;
   process.stdout.write(`  waiting for ${want.size} grades`);
@@ -153,6 +173,47 @@ async function main() {
     }),
   );
 
+  const heldGrades = Object.fromEntries(
+    HELDOUT.map((t) => {
+      const sev = held[t].ids.map((id) => byId[id]?.severity).filter((x) => x != null);
+      return [t, { mean: mean(sev), min: sev.length ? Math.min(...sev) : null, max: sev.length ? Math.max(...sev) : null }];
+    }),
+  );
+  const totHeld = HELDOUT.reduce((s, t) => s + held[t].n, 0);
+  // Held-out "refused at edge" hits are coincidence (random source IP already quarantined), so detection counts inspection only.
+  const caughtHeld = HELDOUT.reduce((s, t) => s + held[t].held, 0);
+
+  // 6. Time to patch: attack -> held -> Claude graded -> analyst approval -> patch live -> replay refused.
+  // One trial per attack type, each on a fresh demo so earlier patches don't interfere.
+  const ttp = [];
+  for (const t of TIERS) {
+    await post("/api/reset", {});
+    const t0 = performance.now();
+    const r = await post("/api/simulate", { kind: "attack", tier: t });
+    const tHeld = performance.now() - t0;
+    if (r.verdict !== "sandboxed") continue;
+    let item;
+    for (let k = 0; k < 150; k++) {
+      const s = await (await fetch(URL_ + "/api/state")).json();
+      item = s.items.find((i) => i.id === r.id);
+      if (item && item.ai.status === "done") break;
+      await sleep(200);
+    }
+    const tGraded = performance.now() - t0;
+    let snap = await post("/api/decision", { id: r.id, action: "approve", analyst: "Benchmark bot A" });
+    let after = snap.items.find((i) => i.id === r.id);
+    const twoPerson = after.status === "pending";
+    if (twoPerson) {
+      snap = await post("/api/decision", { id: r.id, action: "approve", analyst: "Benchmark bot B" });
+      after = snap.items.find((i) => i.id === r.id);
+    }
+    const tPatched = performance.now() - t0;
+    const replay = await post("/api/simulate", { kind: "r" });
+    const tRefused = performance.now() - t0;
+    ttp.push({ tier: t, severity: after.severity, twoPerson, patched: after.status === "patched", replayRefused: replay.verdict === "blocked", tHeld, tGraded, tPatched, tRefused });
+    console.log(`  time-to-patch ${t}: sev ${after.severity}, patch live at ${(tPatched / 1000).toFixed(1)} s, replay ${replay.verdict}`);
+  }
+
   const totAtk = TIERS.reduce((s, t) => s + attacks[t].n, 0);
   const caught = TIERS.reduce((s, t) => s + attacks[t].held + attacks[t].refused, 0);
   const totUnusual = UNUSUAL.reduce((s, v) => s + unusual[v].n, 0);
@@ -165,6 +226,9 @@ async function main() {
     unusual: Object.fromEntries(UNUSUAL.map((v) => [v, { n: unusual[v].n, flagged: unusual[v].flagged, ...unusualGrades[v] }])),
     attacks: Object.fromEntries(TIERS.map((t) => [t, { n: attacks[t].n, held: attacks[t].held, refused: attacks[t].refused, missed: attacks[t].missed, ...grades[t] }])),
     detectionRate: caught / totAtk,
+    heldout: Object.fromEntries(HELDOUT.map((t) => [t, { n: held[t].n, held: held[t].held, refused: held[t].refused, missed: held[t].missed, ...heldGrades[t] }])),
+    heldoutDetectionRate: caughtHeld / totHeld,
+    timeToPatch: ttp,
     crpCorrect: { ok: crpOk, total: crpTotal },
     claudeFallbacks: fallbacks,
     fallbackNotes: [...fallbackNotes],
@@ -189,6 +253,23 @@ async function main() {
     `| **All attacks** | ${totAtk} | | | **caught ${pct(caught, totAtk)}** |`,
     ``,
     `"Refused at edge" means an earlier critical packet from the same source had already triggered the auto-quarantine.`,
+    ``,
+    `## Held-out attacks (types the rules were not written for)`,
+    ``,
+    `| Attack | Sent | Held | Refused at edge | Missed | Grade range when held |`,
+    `|---|---:|---:|---:|---:|---:|`,
+    ...HELDOUT.map((t) => `| ${t} | ${held[t].n} | ${held[t].held} | ${held[t].refused} | ${held[t].missed} | ${heldGrades[t].min == null ? "—" : `${heldGrades[t].min}–${heldGrades[t].max}`} |`),
+    `| **All held-out** | ${totHeld} | | | | **caught by inspection ${pct(caughtHeld, totHeld)}** |`,
+    ``,
+    `Held-out "refused at edge" hits are coincidence: the random source IP was already quarantined by an earlier critical packet. They don't count as detection.`,
+    ``,
+    `## Time to patch (machine time, one trial per attack type)`,
+    ``,
+    `Attack sent → held inline → Claude graded → approval signed (two bots for severity ≥ ${CRITICAL}) → virtual patch live → identical replay refused at the edge. A real analyst's reading time comes on top of this.`,
+    ``,
+    `| Attack | Severity | Held | Graded | Patch live | Replay refused |`,
+    `|---|---:|---:|---:|---:|---:|`,
+    ...ttp.map((x) => `| ${x.tier} | ${x.severity}${x.twoPerson ? " (2 signers)" : ""} | ${f1(x.tHeld)} ms | ${f1(x.tGraded / 1000)} s | ${f1(x.tPatched / 1000)} s | ${x.replayRefused ? "yes" : "NO"} at ${f1(x.tRefused / 1000)} s |`),
     ``,
     `## False positives (legitimate traffic held)`,
     ``,

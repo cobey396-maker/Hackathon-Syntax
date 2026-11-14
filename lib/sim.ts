@@ -1,5 +1,6 @@
 // Built-in traffic generator (same shapes as traffic_simulator.py) so the dashboard can drive
 // the demo by itself: background logins plus z / c / r hotkeys. Simulated; RFC 5737 IPs.
+import { PARSER_BUFFER } from "./detector";
 import type { RawPacket } from "./types";
 
 const USERS = ["a.patel", "j.nguyen", "m.garcia", "s.kim", "r.oconnor", "l.mbeki", "t.schmidt", "e.rossi"];
@@ -68,6 +69,29 @@ export function unusualLegit(kind: Unusual): RawPacket {
   else if (kind === "rsa-gcm-cipher") p.cipher_suites = [...p.cipher_suites, 0x009c]; // TLS_RSA_WITH_AES_128_GCM_SHA256, valid but uncommon
   else {
     const n = int(1400, 1900); // hybrid post-quantum key share makes the ClientHello much larger
+    p.declared_len = n;
+    p.actual_len = n;
+  }
+  return { ...p, payload_hex: stamp(p).payload_hex };
+}
+
+// Held-out attacks: types the detector's rules were NOT written for. The benchmark uses them to
+// measure how the shield does on attacks it hasn't seen, instead of only on ones it was built around.
+// Not used by the z / c hotkeys.
+export const HELDOUT = ["sslv3-downgrade", "length-underflow", "zero-length-record", "ext-len-overflow", "buffer-boundary-probe"] as const;
+export type Heldout = (typeof HELDOUT)[number];
+
+export function heldout(kind: Heldout): RawPacket {
+  const p = legit();
+  p.src_ip = ip("192.0.2");
+  if (kind === "sslv3-downgrade") p.tls_version = 0x0300; // forces the obsolete SSL 3.0 record format
+  else if (kind === "length-underflow") p.declared_len = int(8, 40); // header claims far fewer bytes than were sent
+  else if (kind === "zero-length-record") {
+    p.declared_len = 0; // empty handshake record; some parsers mis-handle zero-length reads
+    p.actual_len = 0;
+  } else if (kind === "ext-len-overflow") p.extensions_len = pick([0x8000, 0xfff0, 0xffff]); // record is fine; the extensions block inside lies
+  else {
+    const n = PARSER_BUFFER - int(1, 8); // consistent length just under the parser buffer: mapping its size
     p.declared_len = n;
     p.actual_len = n;
   }
