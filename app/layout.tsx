@@ -9,7 +9,7 @@ const brand = Space_Grotesk({ variable: "--font-space-grotesk", subsets: ["latin
 
 export const metadata: Metadata = {
   title: "ShieldOps",
-  description: "SOC console: AI holds zero-day VPN handshakes in a sandbox and drafts a virtual patch; an analyst approves it before it is applied",
+  description: "SOC console: AI holds zero-day VPN handshakes in a Holding Center and drafts a virtual patch; an analyst approves it before it is applied",
   icons: {
     icon: [
       { url: "/favicon.svg", type: "image/svg+xml" },

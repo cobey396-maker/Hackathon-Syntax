@@ -6,7 +6,7 @@ import type { TrafficEvent } from "@/lib/types";
 const STYLE = {
   allowed: { dot: "bg-ok", label: "let in", text: "text-ok-hi" },
   blocked: { dot: "bg-warn", label: "refused at edge", text: "text-warn-hi" },
-  sandboxed: { dot: "bg-crit", label: "to sandbox", text: "text-crit-hi" },
+  sandboxed: { dot: "bg-crit", label: "to Holding Center", text: "text-crit-hi" },
 };
 
 export default function LiveTicker({ traffic, live, onLive }: { traffic: TrafficEvent[]; live: boolean; onLive: (on: boolean) => void }) {

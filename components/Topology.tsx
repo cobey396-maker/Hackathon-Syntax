@@ -20,7 +20,7 @@ const NODES: { id: NodeId; icon: LucideIcon; title: string; x: number; y: number
   { id: "network", icon: Building2, title: "Company network", x: 910, y: 110 },
   { id: "patch", icon: ShieldPlus, title: "Virtual patch", x: 370, y: 320 },
   { id: "analyst", icon: UserCheck, title: "Analyst", x: 580, y: 320 },
-  { id: "sandbox", icon: FlaskConical, title: "Sandbox + Claude", x: 790, y: 320 },
+  { id: "sandbox", icon: FlaskConical, title: "Holding Center", x: 790, y: 320 },
 ];
 
 const DIVERT = "M370 110 H500 C500 270 790 190 790 320";

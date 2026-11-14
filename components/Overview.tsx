@@ -41,7 +41,7 @@ function caption(state: DashboardState): [Tone, string] {
         Date.parse(held.crp.slaDeadline) > state.now ? ` within ${mmss(Date.parse(held.crp.slaDeadline) - state.now)}` : " (response SLA breached)"
       }.`,
     ];
-  return ["warn", `${held.ai.attackClass} from ${held.srcIp} is held in the sandbox at severity ${held.severity}/10, waiting for an analyst.`];
+  return ["warn", `${held.ai.attackClass} from ${held.srcIp} is held in the Holding Center at severity ${held.severity}/10, waiting for an analyst.`];
 }
 
 export default function Overview({

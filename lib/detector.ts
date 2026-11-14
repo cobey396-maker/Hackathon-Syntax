@@ -163,27 +163,27 @@ export function inspect(p: RawPacket, base: Baseline): Verdict | null {
           `[parser] memcpy(buf[${hex(PARSER_BUFFER)}], payload, ${hex(p.declared_len)})`,
           `[parser] *** SIGSEGV at 0x7f3a1c00 in ssl_record_read() ***`,
           `[hp] parser terminated: production firewall would have crashed`,
-          `[hp] contained: 0 bytes left sandbox`,
+          `[hp] contained: 0 bytes left the Holding Center`,
         ]
       : outcome === "leak"
         ? [
             `[parser] WARN state desync after header`,
             `[parser] session entry left half-open`,
             `[hp] no crash; repeated sends would exhaust session table`,
-            `[hp] contained: 0 bytes left sandbox`,
+            `[hp] contained: 0 bytes left the Holding Center`,
           ]
         : outcome === "timeout"
           ? [
               `[parser] waiting for ${gap} missing bytes`,
               `[parser] read timeout after 5000 ms; connection closed, session freed`,
               `[hp] no crash, no leaked state; firewall unaffected`,
-              `[hp] contained: 0 bytes left sandbox`,
+              `[hp] contained: 0 bytes left the Holding Center`,
             ]
           : [
               `[parser] handshake rejected: ${vOk ? "invalid cipher list" : "unsupported version"} (alert 70/40)`,
               `[parser] no session state allocated`,
               `[hp] no crash, no leaked state; firewall unaffected`,
-              `[hp] contained: 0 bytes left sandbox`,
+              `[hp] contained: 0 bytes left the Holding Center`,
             ]),
   ];
 
