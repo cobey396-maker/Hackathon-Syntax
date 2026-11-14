@@ -1,115 +1,174 @@
-// Mock "AI" inspection engine. Deterministic rules stand in for a model so the
-// severity grade is explainable: every finding carries the points it adds.
-import type { Finding, RawPacket } from "./types";
+// Mock AI Shield inspection engine. Deterministic checks stand in for a model so every
+// verdict is explainable: each failed check names the bytes it found and the points it adds.
+import type { Check, PlanLine, RawPacket, Timings } from "./types";
 
-const PARSER_BUFFER = 0x4000; // 16 KiB record buffer in the simulated VPN parser
+export const PARSER_BUFFER = 0x4000; // record buffer in the simulated VPN parser
 const VALID_VERSIONS = [0x0301, 0x0302, 0x0303, 0x0304];
 const KNOWN_CIPHERS = new Set([0x1301, 0x1302, 0x1303, 0xc02b, 0xc02c, 0xc02f, 0xc030, 0xcca8, 0xcca9]);
 
-const hex = (n: number, w = 4) => "0x" + n.toString(16).toUpperCase().padStart(w, "0");
+export const hex = (n: number, w = 4) => "0x" + n.toString(16).toUpperCase().padStart(w, "0");
+
+// Rebuild the TLS record + ClientHello header bytes the shield actually parses.
+// Layout: [0] type | [1-2] version | [3-4] length | [5] hs type | [6-8] hs len | [9-10] client ver
+//         [11-42] random | [43] session id len | [44-45] cipher list len | [46..] ciphers | compression
+export const OFF = { type: 0, version: 1, length: 3, hsType: 5, cipherLen: 44, ciphers: 46 };
+
+function buildBytes(p: RawPacket): number[] {
+  const rnd = (p.payload_hex.match(/[0-9a-f]{2}/gi) ?? []).map((h) => parseInt(h, 16));
+  const hsLen = Math.max(0, p.actual_len - 4);
+  const b = [
+    0x16, p.tls_version >> 8, p.tls_version & 0xff, (p.declared_len >> 8) & 0xff, p.declared_len & 0xff,
+    0x01, (hsLen >> 16) & 0xff, (hsLen >> 8) & 0xff, hsLen & 0xff, 0x03, 0x03,
+    ...Array.from({ length: 32 }, (_, i) => rnd[i % Math.max(1, rnd.length)] ?? i),
+    0x00, ((p.cipher_suites.length * 2) >> 8) & 0xff, (p.cipher_suites.length * 2) & 0xff,
+  ];
+  for (const c of p.cipher_suites) b.push(c >> 8, c & 0xff);
+  b.push(0x01, 0x00);
+  return b;
+}
+
+// Deterministic pseudo-latency so the same packet always reports the same timing.
+export function timings(p: RawPacket): Timings {
+  let h = p.declared_len * 31 + p.tls_version;
+  for (const ch of p.src_ip) h = (h * 33 + ch.charCodeAt(0)) >>> 0;
+  const parseMs = 0.18 + (h % 37) / 100;
+  const modelMs = 1.4 + ((h >> 5) % 160) / 100;
+  return { parseMs: +parseMs.toFixed(2), modelMs: +modelMs.toFixed(2), totalMs: +(parseMs + modelMs + 0.06).toFixed(2) };
+}
+
+// A shield rule: human-readable condition + the predicate it enforces.
+type Rule = { cond: string; test: (p: RawPacket) => boolean };
+
+export type Baseline = { mean: number; std: number; n: number };
 
 export type Verdict = {
   severity: number;
   confidence: number;
-  findings: Finding[];
-  trace: string[];
-  rule: string;
+  checks: Check[];
+  bytes: number[];
   honeypot: string[];
   crashes: boolean;
+  rules: Rule[];
+  plan: (ruleId: string) => PlanLine[];
 };
 
-export function inspect(p: RawPacket): Verdict | null {
-  const findings: Finding[] = [];
-  const conditions: string[] = [];
+export function inspect(p: RawPacket, base: Baseline): Verdict | null {
+  const bytes = buildBytes(p);
+  const n = p.cipher_suites.length;
+  const rules: Rule[] = [];
 
-  if (!VALID_VERSIONS.includes(p.tls_version)) {
-    const near = p.tls_version > 0x0304 && p.tls_version <= 0x0310;
-    findings.push({
-      label: `record version ${hex(p.tls_version)} outside TLS 1.0–1.3 (${near ? "near-miss, likely fuzzed" : "nonsense value"})`,
-      points: near ? 1 : 2,
-    });
-    conditions.push("tls.record.version not in {0x0301..0x0304}");
-  }
+  const vOk = VALID_VERSIONS.includes(p.tls_version);
+  const vNear = p.tls_version > 0x0304 && p.tls_version <= 0x0310;
+  if (!vOk) rules.push({ cond: "tls.record.version !in 0x0301..0x0304", test: (q) => !VALID_VERSIONS.includes(q.tls_version) });
 
   const overflow = p.declared_len > PARSER_BUFFER;
-  if (overflow) {
-    findings.push({
-      label: `length field ${hex(p.declared_len)} exceeds parser buffer ${hex(PARSER_BUFFER)}`,
-      points: 5,
-    });
-    conditions.push(`tls.record.length > ${hex(PARSER_BUFFER)}`);
-  } else if (p.declared_len !== p.actual_len) {
-    findings.push({
-      label: `declared length ${p.declared_len} B ≠ actual payload ${p.actual_len} B`,
-      points: 3,
-    });
-    conditions.push("tls.record.length != payload.length");
-  }
+  const mismatch = p.declared_len !== p.actual_len;
+  if (overflow) rules.push({ cond: `tls.record.length > ${hex(PARSER_BUFFER)}`, test: (q) => q.declared_len > PARSER_BUFFER });
+  else if (mismatch) rules.push({ cond: "tls.record.length != payload.length", test: (q) => q.declared_len !== q.actual_len });
 
-  const ciphers = p.cipher_suites;
-  const badCipher =
-    ciphers.length === 0 ||
-    new Set(ciphers).size !== ciphers.length ||
-    ciphers.some((c) => !KNOWN_CIPHERS.has(c));
-  if (badCipher) {
-    findings.push({
-      label:
-        ciphers.length === 0
-          ? "empty cipher-suite list"
-          : `cipher list malformed: [${ciphers.map((c) => hex(c)).join(", ")}]`,
-      points: 2,
+  const dup = new Set(p.cipher_suites).size !== n;
+  const unknown = p.cipher_suites.filter((c) => !KNOWN_CIPHERS.has(c));
+  const cOk = n > 0 && !dup && unknown.length === 0;
+  if (!cOk)
+    rules.push({
+      cond: "handshake.cipher_suites invalid",
+      test: (q) => q.cipher_suites.length === 0 || new Set(q.cipher_suites).size !== q.cipher_suites.length || q.cipher_suites.some((c) => !KNOWN_CIPHERS.has(c)),
     });
-    conditions.push("handshake.cipher_suites invalid");
-  }
 
-  if (findings.length === 0) return null;
+  if (rules.length === 0) return null;
 
+  const sigma = base.std > 0 ? Math.abs(p.declared_len - base.mean) / base.std : 0;
   const crashes = overflow;
-  if (crashes) {
-    findings.push({ label: "payload overflows parser in honeypot replay (SIGSEGV)", points: 3 });
-  }
 
-  const raw = findings.reduce((s, f) => s + f.points, 0);
-  const severity = Math.min(10, raw);
-  const confidence = Math.min(99, 55 + severity * 4 + findings.length);
-
-  const trace = [
-    `ingest  ${p.protocol} handshake from ${p.src_ip} (user="${p.user}")`,
-    `parse   record v${hex(p.tls_version)} len=${p.declared_len} actual=${p.actual_len} ciphers=${ciphers.length}`,
-    ...findings.map((f) => `flag    +${f.points}  ${f.label}`),
-    `score   raw=${raw} → severity ${severity}/10${raw > 10 ? " (capped)" : ""}`,
-    `match   no signature in IPS ruleset — treating as zero-day variant`,
-    `action  quarantined to sandbox, virtual patch drafted, awaiting analyst`,
+  const checks: Check[] = [
+    { kind: "parser", field: "record.content_type", observed: "0x16 handshake", expected: "0x16", ok: true, points: 0, bytes: [0, 0] },
+    {
+      kind: "parser",
+      field: "record.version",
+      observed: hex(p.tls_version),
+      expected: "0x0301 – 0x0304",
+      ok: vOk,
+      points: vOk ? 0 : vNear ? 1 : 2,
+      bytes: [OFF.version, OFF.version + 1],
+    },
+    {
+      kind: "parser",
+      field: "record.length",
+      observed: `${hex(p.declared_len)} (${p.declared_len} B)`,
+      expected: overflow ? `≤ ${hex(PARSER_BUFFER)} buffer` : `= payload ${p.actual_len} B`,
+      ok: !overflow && !mismatch,
+      points: overflow ? 5 : mismatch ? 3 : 0,
+      bytes: [OFF.length, OFF.length + 1],
+    },
+    { kind: "parser", field: "handshake.type", observed: "0x01 ClientHello", expected: "0x01", ok: true, points: 0, bytes: [OFF.hsType, OFF.hsType] },
+    {
+      kind: "parser",
+      field: "cipher_suites",
+      observed: n === 0 ? "empty list" : dup ? `${n} suites, duplicates` : unknown.length ? `unknown ${unknown.map((c) => hex(c)).join(" ")}` : `${n} suites`,
+      expected: "≥1 known, unique",
+      ok: cOk,
+      points: cOk ? 0 : 2,
+      bytes: [OFF.cipherLen, OFF.ciphers + Math.max(0, n * 2 - 1)],
+    },
+    {
+      kind: "model",
+      field: "length vs baseline",
+      observed: `${sigma.toFixed(1)}σ (n=${base.n})`,
+      expected: "< 4.0σ",
+      ok: sigma < 4,
+      points: 0, // signal only; rules above carry the score
+      bytes: null,
+    },
+    {
+      kind: "sandbox",
+      field: "honeypot replay",
+      observed: crashes ? "SIGSEGV ssl_record_read()" : "session table leak",
+      expected: "clean parse",
+      ok: false,
+      points: crashes ? 3 : 0,
+      bytes: null,
+    },
   ];
 
-  const rule = [
-    `virtual-patch {`,
-    `  match  protocol "${p.protocol}"`,
-    ...conditions.map((c, i) => `  ${i === 0 ? "when " : "or   "} ${c}`),
-    `  action drop + log`,
-    `  scope  outside-interface vpn-terminators`,
-    `}`,
-  ].join("\n");
+  const raw = checks.reduce((s, c) => s + c.points, 0);
+  const severity = Math.max(1, Math.min(10, raw));
+  const failed = checks.filter((c) => !c.ok).length;
+  const confidence = Math.min(99, 55 + severity * 4 + failed);
 
   const honeypot = [
     `$ hp-replay --target asa-parser-sim --pcap ${p.src_ip.replaceAll(".", "_")}.pcap`,
-    `[hp] spinning up isolated parser instance (no egress) ... ok`,
-    `[hp] replaying ${p.protocol} handshake (${p.actual_len} bytes)`,
-    `[parser] read record header: version=${hex(p.tls_version)} length=${hex(p.declared_len)}`,
+    `[hp] isolated parser instance up (no egress)`,
+    `[hp] replaying ${p.protocol} handshake, ${p.actual_len} bytes`,
+    `[parser] record header: version=${hex(p.tls_version)} length=${hex(p.declared_len)}`,
     ...(crashes
       ? [
           `[parser] memcpy(buf[${hex(PARSER_BUFFER)}], payload, ${hex(p.declared_len)})`,
           `[parser] *** SIGSEGV at 0x7f3a1c00 in ssl_record_read() ***`,
-          `[hp] parser process terminated — production firewall would have crashed`,
-          `[hp] contained: 0 bytes left sandbox, instance destroyed`,
+          `[hp] parser terminated: production firewall would have crashed`,
+          `[hp] contained: 0 bytes left sandbox`,
         ]
       : [
-          `[parser] WARN state machine desync: unexpected field after header`,
-          `[parser] session table entry left half-open (resource leak)`,
-          `[hp] no crash — repeated sends would exhaust VPN session table`,
-          `[hp] contained: 0 bytes left sandbox, instance destroyed`,
+          `[parser] WARN state desync after header`,
+          `[parser] session entry left half-open`,
+          `[hp] no crash; repeated sends would exhaust session table`,
+          `[hp] contained: 0 bytes left sandbox`,
         ]),
   ];
 
-  return { severity, confidence, findings, trace, rule, honeypot, crashes };
+  const fp = bytes.slice(0, 6).concat(bytes.slice(OFF.cipherLen, OFF.cipherLen + 4)).map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 12);
+
+  const plan = (ruleId: string): PlanLine[] => [
+    ...rules.map((r) => ({ cmd: `shield-rule ${ruleId} drop if ${r.cond}`, note: "drop matching handshakes before the firewall parser" })),
+    severity >= 7
+      ? { cmd: `acl edge-in deny host ${p.src_ip} expire 24h`, note: "source sent a parser-crashing payload" }
+      : severity >= 4
+        ? { cmd: `rate-limit host ${p.src_ip} 5/min expire 24h`, note: "throttle while source is watched" }
+        : { cmd: `watch host ${p.src_ip}`, note: "flag further handshakes for review" },
+    { cmd: `ips watchlist add fp:${fp}`, note: "fingerprint of the malformed header" },
+    severity >= 8
+      ? { cmd: `incident open P1 "VPN parser overflow" notify psirt`, note: "crash reproduced; firewall is exploitable" }
+      : { cmd: `incident log weekly-review`, note: "no crash; track for variants" },
+  ];
+
+  return { severity, confidence, checks, bytes, honeypot, crashes, rules, plan };
 }

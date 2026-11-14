@@ -1,58 +1,94 @@
+"use client";
+import { useEffect, useState } from "react";
+import { Activity, ScrollText, Shield, ShieldAlert } from "lucide-react";
+
 export type View = "queue" | "ledger" | "traffic";
 
-const NAV: [View, string][] = [
-  ["queue", "Sandbox Queue"],
-  ["ledger", "Audit Ledger"],
-  ["traffic", "Live Traffic"],
-];
+const NAV = [
+  { key: "queue", label: "Sandbox Queue", icon: ShieldAlert },
+  { key: "ledger", label: "Audit Ledger", icon: ScrollText },
+  { key: "traffic", label: "Live Traffic", icon: Activity },
+] as const;
 
 export default function Sidebar({
   view,
   onView,
   pending,
   simOnline,
+  analyst,
+  analysts,
+  onAnalyst,
 }: {
   view: View;
   onView: (v: View) => void;
   pending: number;
   simOnline: boolean;
+  analyst: string;
+  analysts: string[];
+  onAnalyst: (a: string) => void;
 }) {
+  // UTC clock, started after mount so server and client markup match
+  const [clock, setClock] = useState("--:--:--");
+  useEffect(() => {
+    const t = setInterval(() => setClock(new Date().toISOString().slice(11, 19)), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-panel">
-      <div className="border-b border-line px-5 py-4">
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-sm bg-cisco" />
-          <span className="text-sm font-semibold tracking-wide">Virtual Patch Sandbox</span>
+    <aside className="fixed inset-y-0 left-0 flex w-64 flex-col border-r bg-panel">
+      <div className="flex items-center gap-3 border-b px-5 py-4">
+        <div className="flex h-8 w-8 items-center justify-center border border-neon/60 bg-neon/10">
+          <Shield className="h-4 w-4 text-neon-hi" />
         </div>
-        <p className="mt-1 text-xs text-muted">Digital Shield · SOC Console</p>
+        <div>
+          <p className="text-sm font-semibold tracking-tight">Virtual Patch Sandbox</p>
+          <p className="font-mono text-xs text-dim">DIGITAL SHIELD · SOC</p>
+        </div>
       </div>
 
-      <nav className="flex flex-col gap-1 p-3">
-        <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted">Operations</p>
-        {NAV.map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => onView(key)}
-            className={`flex items-center justify-between rounded px-3 py-2 text-left text-sm transition-colors ${
-              view === key
-                ? "border-l-2 border-cisco bg-cisco-deep/40 text-ink"
-                : "border-l-2 border-transparent text-muted hover:bg-panel-2 hover:text-ink"
-            }`}
-          >
-            {label}
-            {key === "queue" && pending > 0 && (
-              <span className="rounded bg-cisco px-1.5 font-mono text-xs font-semibold text-bg">{pending}</span>
-            )}
-          </button>
-        ))}
+      <nav className="flex flex-col py-3">
+        <p className="px-5 pb-2 text-xs font-semibold tracking-wider text-dim uppercase">Operations</p>
+        {NAV.map((n) => {
+          const active = view === n.key;
+          return (
+            <button
+              key={n.key}
+              onClick={() => onView(n.key)}
+              className={`flex items-center gap-3 border-l-2 px-5 py-2.5 text-left text-sm transition-colors ${
+                active ? "border-neon bg-neon/10 text-ink" : "border-transparent text-muted hover:bg-panel-2 hover:text-ink"
+              }`}
+            >
+              <n.icon className={`h-4 w-4 ${active ? "text-neon-hi" : ""}`} />
+              {n.label}
+              {n.key === "queue" && pending > 0 && (
+                <span className="ml-auto bg-neon px-1.5 font-mono text-xs font-semibold text-white">{pending}</span>
+              )}
+            </button>
+          );
+        })}
       </nav>
 
-      <div className="mt-auto border-t border-line p-4 text-xs text-muted">
-        <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${simOnline ? "animate-pulse bg-emerald-400" : "bg-slate-600"}`} />
-          Traffic feed {simOnline ? "online" : "offline"}
+      <div className="mt-auto space-y-4 border-t p-5">
+        <label className="block">
+          <span className="text-xs font-semibold tracking-wider text-dim uppercase">Analyst on duty</span>
+          <select
+            value={analyst}
+            onChange={(e) => onAnalyst(e.target.value)}
+            className="mt-1.5 h-8 w-full border bg-bg px-2 text-sm text-ink focus:border-neon focus:outline-none"
+          >
+            {analysts.map((a) => (
+              <option key={a}>{a}</option>
+            ))}
+          </select>
+        </label>
+        <div className="font-mono text-xs text-muted">
+          <div className="flex items-center gap-2">
+            <span className={`h-1.5 w-1.5 rounded-full ${simOnline ? "bg-emerald-400" : "bg-red-500"}`} />
+            {simOnline ? "SENSOR LIVE" : "SENSOR OFFLINE"}
+            <span className="ml-auto tabular-nums text-dim">{clock} UTC</span>
+          </div>
+          {!simOnline && <p className="mt-2 text-dim">python traffic_simulator.py</p>}
         </div>
-        {!simOnline && <p className="mt-2 font-mono">python traffic_simulator.py</p>}
       </div>
     </aside>
   );

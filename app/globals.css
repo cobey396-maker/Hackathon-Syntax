@@ -1,20 +1,48 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
+/* Dark SOC palette. Neon purple = human-in-the-loop controls and active states only.
+   Cisco Blue = secondary accents and data visualisation. */
 @theme {
-  --color-bg: #0b0f14;
-  --color-panel: #121821;
-  --color-panel-2: #18212c;
-  --color-line: #1f2a36;
-  --color-ink: #f5f7fa;
-  --color-muted: #8b98a8;
+  --color-bg: #0b0d12;
+  --color-panel: #11141b;
+  --color-panel-2: #161a23;
+  --color-line: #1e2330;
+  --color-ink: #f3f4f6;
+  --color-muted: #8a93a6;
+  --color-dim: #5b6476;
+  --color-neon: #b026ff;
+  --color-neon-hi: #c858ff;
   --color-cisco: #049fd9;
   --color-cisco-deep: #005073;
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+
+  --animate-shake: shake 0.5s ease-in-out 2;
+  --animate-flash: flash 0.35s ease-in-out 3;
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(3px); }
+  }
+  @keyframes flash {
+    0%, 100% { background-color: rgb(239 68 68 / 0.15); }
+    50% { background-color: rgb(239 68 68 / 0.55); }
+  }
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-ink);
-  color-scheme: dark;
+  font-family: var(--font-sans);
+}
+
+* {
+  border-color: var(--color-line);
 }

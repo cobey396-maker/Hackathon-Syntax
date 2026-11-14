@@ -1,47 +1,53 @@
+import type { LedgerSource } from "@/lib/audit";
 import type { LedgerEntry } from "@/lib/types";
-import { Panel, SeverityBadge, td, th } from "./ui";
+import { Pane, Sev, td, th } from "./soc";
 
-export default function AuditLedger({ ledger }: { ledger: LedgerEntry[] }) {
+export default function AuditLedger({ ledger, source }: { ledger: LedgerEntry[]; source: LedgerSource }) {
   return (
-    <Panel title="Audit Ledger" right={<span className="text-xs text-muted">append-only · every decision is attributed</span>}>
+    <Pane
+      title="Audit Ledger"
+      className="flex-1"
+      meta={
+        <>
+          <span>append-only · {ledger.length} entries</span>
+          <span className={source === "supabase" ? "text-emerald-400" : "text-amber-300"}>source: {source}</span>
+        </>
+      }
+    >
       {ledger.length === 0 ? (
-        <p className="p-8 text-center text-sm text-muted">No analyst decisions yet.</p>
+        <p className="p-8 text-center text-sm text-muted">No decisions yet. Every AI-drafted patch must be approved or overridden by a named analyst.</p>
       ) : (
         <table className="w-full">
           <thead>
             <tr>
-              <th className={th}>Time (UTC)</th>
-              <th className={th}>Entry</th>
-              <th className={th}>Analyst</th>
-              <th className={th}>Decision</th>
-              <th className={th}>Packet</th>
-              <th className={th}>Rule</th>
-              <th className={th}>Severity</th>
+              {["Time (UTC)", "Entry", "Analyst", "Decision", "Packet", "Source IP", "Rule", "Changes", "Sev"].map((h) => (
+                <th key={h} className={th}>
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {ledger.map((e) => (
-              <tr key={e.id} className="border-t border-line">
+              <tr key={e.id} className="border-b border-line/60">
                 <td className={`${td} font-mono text-muted`}>{e.ts.replace("T", " ").slice(0, 19)}</td>
                 <td className={`${td} font-mono`}>{e.id}</td>
                 <td className={td}>{e.analyst}</td>
-                <td className={td}>
-                  {e.action === "approve" ? (
-                    <span className="font-medium text-cisco">Approved virtual patch</span>
-                  ) : (
-                    <span className="font-medium text-amber-300">Overrode, allowed traffic</span>
-                  )}
+                <td className={`${td} font-mono text-xs font-semibold`}>
+                  {e.action === "approve" ? <span className="text-neon-hi">APPROVED PATCH</span> : <span className="text-muted">OVERRIDE</span>}
                 </td>
                 <td className={`${td} font-mono`}>{e.itemId}</td>
+                <td className={`${td} font-mono`}>{e.srcIp}</td>
                 <td className={`${td} font-mono`}>{e.action === "approve" ? e.ruleId : "—"}</td>
+                <td className={`${td} font-mono`}>{e.action === "approve" ? e.changes : 0}</td>
                 <td className={td}>
-                  <SeverityBadge value={e.severity} />
+                  <Sev value={e.severity} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-    </Panel>
+    </Pane>
   );
 }
