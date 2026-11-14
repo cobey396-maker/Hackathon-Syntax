@@ -31,15 +31,17 @@ export default function DeployedPatches({ deployed, now }: { deployed: DeployedP
             {deployed.map((d) => {
               const hot = d.lastHit !== null && now - Date.parse(d.lastHit) < 4000;
               return (
-                <tr key={d.ruleId} className={`border-b border-line/60 align-top transition-colors ${hot ? "bg-neon/10" : ""}`}>
+                <tr key={d.ruleId} className={`border-b border-line/60 align-top transition-colors ${hot ? "bg-neon/10" : d.kind === "quarantine" ? "bg-red-500/5" : ""}`}>
                   <td className={`${td} font-mono whitespace-nowrap`}>
-                    <span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-neon align-middle" />
+                    <span className={`mr-2 inline-block h-1.5 w-1.5 rounded-full align-middle ${d.kind === "quarantine" ? "bg-red-500" : "bg-neon"}`} />
                     {d.ruleId}
                   </td>
-                  <td className={`${td} font-mono text-xs text-cisco`}>
-                    {d.conds.map((c) => (
-                      <div key={c}>drop if {c}</div>
-                    ))}
+                  <td className={`${td} font-mono text-xs ${d.kind === "quarantine" ? "text-red-300" : "text-cisco"}`}>
+                    {d.kind === "quarantine" ? (
+                      <div>QUARANTINE · all traffic from source, pending two-analyst review of {d.itemId}</div>
+                    ) : (
+                      d.conds.map((c) => <div key={c}>drop if {c}</div>)
+                    )}
                   </td>
                   <td className={`${td} font-mono whitespace-nowrap`}>
                     {d.srcIp}

@@ -9,10 +9,12 @@ Stack: Next.js (App Router) · Tailwind CSS v4 · Python (traffic simulator) · 
 ```bash
 npm install
 npm run dev                      # http://localhost:3000
-python traffic_simulator.py      # second terminal; stdlib only
+python traffic_simulator.py      # optional second terminal; stdlib only
 ```
 
-In the simulator terminal, legitimate remote-worker logins stream in **green**. Press **`z`** to inject a malformed zero-day handshake (rotates mild → moderate → critical), **`c`** to inject a critical one every time (10/10, crashes the parser; best for demos), **`r`** to replay the last zero-day from the same attacker, **`q`** to quit. In Git Bash or other terminals that don't pass single keys, type the key and press Enter. Flags: `--rate 2` (logins/sec), `--auto-attack 10` (also inject ~1 zero-day per 10 logins), `--url` (other host).
+**No terminal needed:** the dashboard generates its own background logins and has the attack keys built in. On the page press **`Z`** (zero-day, rotating tier), **`C`** (critical 10/10), **`R`** (replay the last held attack), or click the same buttons under **Attack simulator** in the sidebar. Untick **Background logins** if you run the Python simulator instead.
+
+Optionally, in the simulator terminal, legitimate remote-worker logins stream in **green**. Press **`z`** to inject a malformed zero-day handshake (rotates mild → moderate → critical), **`c`** to inject a critical one every time (10/10, crashes the parser; best for demos), **`r`** to replay the last zero-day from the same attacker, **`q`** to quit. In Git Bash or other terminals that don't pass single keys, type the key and press Enter. Flags: `--rate 2` (logins/sec), `--auto-attack 10` (also inject ~1 zero-day per 10 logins), `--url` (other host).
 
 ## Demo flow
 
@@ -23,6 +25,23 @@ In the simulator terminal, legitimate remote-worker logins stream in **green**. 
 5. **Dynamic edge deployment:** an approved patch goes live in **Deployed Virtual Patches**. Press `r` in the simulator: the same attack is now refused at the edge before the AI runs. The simulator prints `ERR_CONNECTION_REFUSED · blocked by VP-0001`, the dot stops at the AI Shield, and the patch's hit count and the **Refused at edge** KPI increase.
 
 Approved patches block the whole malformation class, so later `z` presses that share a condition are refused too. Click **Reset demo** at the bottom of the sidebar (twice, to confirm) to clear the queue, patches, traffic and counters between rehearsals. Rows already written to Supabase are kept; the dashboard just hides them.
+
+## Claude grades severity
+
+When a packet is held, the parser checks give a quick **rules score**. The server then sends the evidence (field checks, baseline comparison, honeypot result) to **Claude Opus 5.5** (`lib/grader.ts`), which returns a severity 1–10, confidence, attack class, a short rationale and risk factors as structured JSON. The queue shows "Claude grading…" for the few seconds that takes. Without `ANTHROPIC_API_KEY` (or if the call fails), the rules score stands and the modal says so.
+
+```
+ANTHROPIC_API_KEY=sk-ant-...     # in .env.local (and in Vercel's environment variables)
+```
+
+## Critical Response Protocol (severity 7+)
+
+1. **Auto-quarantine:** the source IP is blocked at the edge the moment it's graded 7+, before any human looks (`QRN-xxxx` in Deployed Virtual Patches).
+2. **5-minute response SLA:** countdown in the queue and the modal.
+3. **Two-person rule:** approving *or* overriding needs two different analysts. Sign once, switch analyst in the sidebar, sign again. The ledger records both names.
+4. **P1 incident:** the drafted patch opens a P1 incident and notifies PSIRT.
+
+The decision lifts the quarantine; an approval replaces it with the virtual patch.
 
 ## How it works
 

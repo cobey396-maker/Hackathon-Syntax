@@ -1,4 +1,5 @@
-import { ingest } from "@/lib/store";
+import { after } from "next/server";
+import { gradeItem, ingest } from "@/lib/store";
 import type { RawPacket } from "@/lib/types";
 
 export async function POST(req: Request) {
@@ -7,6 +8,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "bad packet" }, { status: 400 });
   }
   const r = ingest(p);
+  if (r && "item" in r) after(() => gradeItem(r.item.id, r.packet)); // Claude grades after we respond
   if (r && "blocked" in r) {
     // Refused at the edge by an approved virtual patch
     return Response.json({ verdict: "blocked", error: "ERR_CONNECTION_REFUSED", ruleId: r.blocked.ruleId }, { status: 403 });

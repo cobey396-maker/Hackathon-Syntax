@@ -2,10 +2,10 @@
 // Inspection view for one held packet: AI reasoning trace (staged reveal), flagged hex bytes,
 // honeypot terminal, drafted virtual patch, and the human oversight controls.
 import { useEffect, useState } from "react";
-import { Check as CheckIcon, X } from "lucide-react";
+import { Brain, Check as CheckIcon, Siren, X } from "lucide-react";
 import type { Check, Decision, DeployedPatch, LedgerEntry, SandboxItem } from "@/lib/types";
 import HoneypotTerminal from "./HoneypotTerminal";
-import { Confidence, hhmmss, Sev, sevText, StatusPill, td, th } from "./soc";
+import { Confidence, CritBadge, hhmmss, mmss, Sev, sevText, StatusPill, td, th } from "./soc";
 
 const TICK_MS = 280;
 
@@ -17,6 +17,7 @@ function hexClass(i: number, checks: Check[], shownChecks: number, hover: number
 }
 
 export default function InspectionModal({
+  now,
   item,
   ledger,
   patch,
@@ -25,6 +26,7 @@ export default function InspectionModal({
   onClose,
   onDecide,
 }: {
+  now: number;
   item: SandboxItem;
   ledger: LedgerEntry[];
   patch?: DeployedPatch;
@@ -55,7 +57,14 @@ export default function InspectionModal({
   const verdictShown = tick > nChecks;
   const planShown = Math.max(0, Math.min(item.plan.length, tick - nChecks - 1));
   const done = tick >= total;
-  const liveScore = Math.min(10, item.checks.slice(0, shownChecks).reduce((s, c) => s + c.points, 0));
+  const grading = item.ai.status === "grading";
+  // During the reveal show the rules tally; once Claude has graded, show its verdict
+  const liveScore = done && !grading ? item.severity : Math.min(10, item.checks.slice(0, shownChecks).reduce((s, c) => s + c.points, 0));
+  const crp = item.crp;
+  const slaLeft = crp ? Date.parse(crp.slaDeadline) - now : 0;
+  const myPrior = crp?.signoffs[0];
+  const sign = (a: Decision) =>
+    !crp ? null : myPrior && myPrior.action === a ? (myPrior.analyst === analyst ? "waiting for a second analyst" : "co-sign · 2 of 2") : "signature 1 of 2";
   const failed = item.checks.filter((c) => !c.ok && c.kind === "parser").map((c) => c.field);
   const decision = ledger.find((e) => e.itemId === item.id);
   const rows = Array.from({ length: Math.ceil(item.bytes.length / 16) }, (_, r) => item.bytes.slice(r * 16, r * 16 + 16));
@@ -99,7 +108,7 @@ export default function InspectionModal({
             </div>
             <div className="w-28">
               <p className="text-xs tracking-wider text-dim uppercase">AI verdict</p>
-              <p className="font-mono text-sm">{done ? "complete" : "analysing…"}</p>
+              <p className="font-mono text-sm">{!done ? "analysing…" : grading ? "Claude grading…" : item.ai.engine === "claude" ? "Claude" : "rules"}</p>
             </div>
             <button onClick={onClose} className="p-1 text-muted hover:text-ink" aria-label="Close">
               <X className="h-4 w-4" />
@@ -110,6 +119,66 @@ export default function InspectionModal({
         {/* body */}
         <div className="grid min-h-0 flex-1 gap-px overflow-auto bg-line lg:grid-cols-2">
           <div className="space-y-5 bg-panel p-5">
+            {crp && (
+              <div className="border border-red-500/70 bg-red-500/5">
+                <div className="flex items-center gap-2 border-b border-red-500/40 px-3 py-2">
+                  <Siren className="h-4 w-4 text-red-400" />
+                  <span className="text-xs font-semibold tracking-wider text-red-300 uppercase">Critical Response Protocol</span>
+                  <span className="ml-auto">
+                    <CritBadge />
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-px bg-red-500/20 font-mono text-xs">
+                  {[
+                    ["1 · Source quarantine", crp.quarantineLifted ? `lifted ${hhmmss(crp.quarantineLifted)}` : crp.quarantinedAt ? `${item.srcIp} held at edge` : "—"],
+                    ["2 · Response SLA", item.status !== "pending" ? "met" : slaLeft > 0 ? `${mmss(slaLeft)} left` : "BREACHED"],
+                    ["3 · Two-person rule", crp.signoffs.length ? crp.signoffs.map((s) => s.analyst.split(" · ")[0]).join(" + ") + ` (${crp.signoffs.length}/2)` : "0/2 signatures"],
+                    ["4 · Incident", "P1 opened · PSIRT notified"],
+                  ].map(([k, v]) => (
+                    <div key={k} className="bg-panel px-3 py-2">
+                      <p className="text-dim">{k}</p>
+                      <p className={k.startsWith("2") && item.status === "pending" && slaLeft <= 0 ? "text-red-400" : "text-ink"}>{v}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              {label(
+                "Claude assessment",
+                grading ? "grading…" : item.ai.engine === "claude" ? `${item.ai.model} · ${((item.ai.ms ?? 0) / 1000).toFixed(1)} s` : (item.ai.note ?? "rules engine"),
+              )}
+              <div className="border bg-bg px-3 py-2.5 text-sm">
+                {grading ? (
+                  <p className="flex items-center gap-2 font-mono text-xs text-cisco">
+                    <Brain className="h-3.5 w-3.5 animate-pulse" />
+                    Claude is weighing the evidence…
+                  </p>
+                ) : (
+                  <>
+                    <p className="flex items-center gap-2">
+                      <Brain className="h-3.5 w-3.5 text-cisco" />
+                      <span className="font-semibold">{item.ai.attackClass}</span>
+                      <span className="ml-auto font-mono text-xs text-dim">
+                        rules {item.ai.ruleSeverity}/10 → <span className={sevText(item.severity)}>{item.ai.engine === "claude" ? "Claude" : "final"} {item.severity}/10</span>
+                      </span>
+                    </p>
+                    <p className="mt-1.5 text-muted">{item.ai.rationale}</p>
+                    {item.ai.riskFactors.length > 0 && (
+                      <p className="mt-2 flex flex-wrap gap-1.5">
+                        {item.ai.riskFactors.map((r) => (
+                          <span key={r} className="border px-1.5 font-mono text-xs text-muted">
+                            {r}
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
             <div>
               {label("AI reasoning trace", `${item.timings.totalMs.toFixed(2)} ms inline`)}
               <div className="border bg-bg px-3 py-2 font-mono text-xs leading-relaxed">
@@ -122,7 +191,7 @@ export default function InspectionModal({
                     </p>
                     {verdictShown && (
                       <p className="mt-1 text-ink animate-in fade-in-0">
-                        Verdict: hold in sandbox. Severity {item.severity}/10, confidence {item.confidence}%. Drafting virtual patch {item.ruleId}.
+                        Verdict: hold in sandbox. {grading ? "Escalating to Claude for a severity grade…" : `Severity ${item.severity}/10, confidence ${item.confidence}%.`} Drafting virtual patch {item.ruleId}.
                       </p>
                     )}
                   </>
@@ -230,30 +299,37 @@ export default function InspectionModal({
           {item.status === "pending" ? (
             <>
               <p className="text-sm text-muted">
-                {done ? (
+                {!done || grading ? (
+                  "Controls unlock when the AI trace and Claude's grade are complete."
+                ) : crp ? (
+                  <>
+                    <span className="font-semibold text-red-300">Two-person rule.</span> Signing as <span className="text-ink">{analyst}</span>
+                    {myPrior && myPrior.analyst === analyst ? "; switch analyst in the sidebar to co-sign." : "; both signatures go to the audit ledger."}
+                  </>
+                ) : (
                   <>
                     Human review required. Signing as <span className="text-ink">{analyst}</span>; the decision is written to the audit ledger.
                   </>
-                ) : (
-                  "Controls unlock when the AI trace completes."
                 )}
               </p>
               <div className="flex gap-3">
                 <button
-                  disabled={!done || busy}
+                  disabled={!done || grading || busy || (myPrior?.action === "deny" && myPrior.analyst === analyst)}
                   onClick={() => onDecide("deny")}
                   className="flex items-center gap-2 border bg-panel px-6 py-3 text-sm font-semibold text-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <X className="h-4 w-4" />
                   Override
+                  {sign("deny") && <span className="font-mono text-xs font-normal">· {sign("deny")}</span>}
                 </button>
                 <button
-                  disabled={!done || busy}
+                  disabled={!done || grading || busy || (myPrior?.action === "approve" && myPrior.analyst === analyst)}
                   onClick={() => onDecide("approve")}
                   className="flex items-center gap-2 bg-neon px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-neon/40 transition-colors hover:bg-neon-hi disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
                 >
                   <CheckIcon className="h-4 w-4" />
                   Approve Virtual Patch
+                  {sign("approve") && <span className="font-mono text-xs font-normal">· {sign("approve")}</span>}
                 </button>
               </div>
             </>

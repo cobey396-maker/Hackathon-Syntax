@@ -5,8 +5,7 @@ export async function POST(req: Request) {
   if ((action !== "approve" && action !== "deny") || !analyst) {
     return Response.json({ error: "bad request" }, { status: 400 });
   }
-  if (!(await decide(id, action, analyst))) {
-    return Response.json({ error: "not found or already decided" }, { status: 409 });
-  }
+  const r = await decide(id, action, analyst);
+  if (!r.ok) return Response.json({ error: r.error }, { status: r.status });
   return Response.json(await snapshot());
 }

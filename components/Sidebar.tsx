@@ -19,6 +19,9 @@ export default function Sidebar({
   analysts,
   onAnalyst,
   onReset,
+  autoTraffic,
+  onAutoTraffic,
+  onKey,
 }: {
   view: View;
   onView: (v: View) => void;
@@ -28,6 +31,9 @@ export default function Sidebar({
   analysts: string[];
   onAnalyst: (a: string) => void;
   onReset: () => void;
+  autoTraffic: boolean;
+  onAutoTraffic: (on: boolean) => void;
+  onKey: (k: "z" | "c" | "r") => void;
 }) {
   // Two-step reset so a stray click mid-demo doesn't wipe the run
   const [arm, setArm] = useState(false);
@@ -78,7 +84,34 @@ export default function Sidebar({
         })}
       </nav>
 
-      <div className="mt-auto space-y-4 border-t p-5">
+      <div className="mt-auto space-y-3 border-t p-5">
+        <p className="text-xs font-semibold tracking-wider text-dim uppercase">Attack simulator</p>
+        <div className="grid grid-cols-3 gap-1.5">
+          {(
+            [
+              ["z", "Zero-day"],
+              ["c", "Critical"],
+              ["r", "Replay"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => onKey(k)}
+              title={`Press ${k.toUpperCase()}`}
+              className="flex flex-col items-center border bg-bg py-1.5 hover:border-cisco hover:text-cisco"
+            >
+              <kbd className="font-mono text-sm font-semibold uppercase">{k}</kbd>
+              <span className="text-xs text-dim">{label}</span>
+            </button>
+          ))}
+        </div>
+        <label className="flex cursor-pointer items-center justify-between font-mono text-xs text-muted">
+          <span>Background logins</span>
+          <input type="checkbox" checked={autoTraffic} onChange={(e) => onAutoTraffic(e.target.checked)} className="accent-cisco" />
+        </label>
+      </div>
+
+      <div className="space-y-4 border-t p-5">
         <label className="block">
           <span className="text-xs font-semibold tracking-wider text-dim uppercase">Analyst on duty</span>
           <select
@@ -97,7 +130,6 @@ export default function Sidebar({
             {simOnline ? "SENSOR LIVE" : "SENSOR OFFLINE"}
             <span className="ml-auto tabular-nums text-dim">{clock} UTC</span>
           </div>
-          {!simOnline && <p className="mt-2 text-dim">python traffic_simulator.py</p>}
         </div>
         <button
           onClick={() => {

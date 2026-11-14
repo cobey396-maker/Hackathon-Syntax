@@ -30,6 +30,28 @@ export type Timings = { parseMs: number; modelMs: number; totalMs: number };
 export type Status = "pending" | "patched" | "allowed";
 export type Decision = "approve" | "deny";
 
+// Who graded the packet. "claude" = Claude API verdict; "rules" = deterministic checks only
+// (no ANTHROPIC_API_KEY, or the call failed / was declined).
+export type AiGrade = {
+  engine: "claude" | "rules";
+  status: "grading" | "done";
+  model: string | null;
+  ms: number | null;
+  ruleSeverity: number; // deterministic baseline before Claude
+  attackClass: string;
+  rationale: string;
+  riskFactors: string[];
+  note: string | null; // why we fell back to rules, if we did
+};
+
+// Critical Response Protocol, armed when severity >= 7.
+export type CriticalProtocol = {
+  quarantinedAt: string | null; // source auto-quarantined at the edge
+  quarantineLifted: string | null;
+  slaDeadline: string; // respond within 5 minutes
+  signoffs: { analyst: string; action: Decision; ts: string }[]; // two-person rule
+};
+
 export type SandboxItem = {
   id: string;
   ruleId: string;
@@ -47,6 +69,8 @@ export type SandboxItem = {
   plan: PlanLine[];
   impact: { matched: number; window: number }; // legit sessions the new rules would have blocked
   status: Status;
+  ai: AiGrade;
+  crp: CriticalProtocol | null; // Critical Response Protocol, set when severity >= 7
 };
 
 export type LedgerEntry = {
@@ -76,6 +100,7 @@ export type TrafficEvent = {
 
 // A virtual patch an analyst approved; enforced at the edge before the AI runs.
 export type DeployedPatch = {
+  kind: "patch" | "quarantine"; // quarantine = automatic critical-protocol hold, pending review
   ruleId: string;
   itemId: string;
   conds: string[]; // shield-rule conditions

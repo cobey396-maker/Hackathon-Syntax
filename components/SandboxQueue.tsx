@@ -1,5 +1,5 @@
 import type { SandboxItem } from "@/lib/types";
-import { Confidence, hhmmss, Pane, Sev, StatusPill, td, th } from "./soc";
+import { Confidence, CritBadge, hhmmss, mmss, Pane, Sev, StatusPill, td, th } from "./soc";
 
 export default function SandboxQueue({ items, now, onOpen }: { items: SandboxItem[]; now: number; onOpen: (id: string) => void }) {
   // Pending first, newest first
@@ -9,13 +9,14 @@ export default function SandboxQueue({ items, now, onOpen }: { items: SandboxIte
     <Pane title="Active Sandbox Queue" meta={<span>{rows.length} intercepted · click a row to inspect</span>} className="flex-1">
       {rows.length === 0 ? (
         <p className="p-8 text-center text-sm text-muted">
-          No packets held. In the simulator terminal, press <kbd className="border bg-bg px-1.5 font-mono text-ink">z</kbd> to inject a zero-day handshake.
+          No packets held. Press <kbd className="border bg-bg px-1.5 font-mono text-ink">Z</kbd> to inject a zero-day handshake, or{" "}
+          <kbd className="border bg-bg px-1.5 font-mono text-ink">C</kbd> for a critical one.
         </p>
       ) : (
         <table className="w-full">
           <thead>
             <tr>
-              {["Timestamp", "ID", "Source IP", "Packet Type", "Threat Confidence", "Severity", "Status"].map((h) => (
+              {["Timestamp", "ID", "Source IP", "Attack (AI)", "Threat Confidence", "Severity", "Status"].map((h) => (
                 <th key={h} className={th}>
                   {h}
                 </th>
@@ -37,15 +38,26 @@ export default function SandboxQueue({ items, now, onOpen }: { items: SandboxIte
                   </td>
                   <td className={`${td} font-mono`}>{i.id}</td>
                   <td className={`${td} font-mono`}>{i.srcIp}</td>
-                  <td className={td}>{i.protocol} handshake</td>
                   <td className={td}>
-                    <Confidence value={i.confidence} />
+                    {i.ai.status === "grading" ? <span className="animate-pulse font-mono text-xs text-cisco">Claude grading…</span> : i.ai.attackClass}
+                    <div className="font-mono text-xs text-dim">
+                      {i.protocol} · {i.ai.engine === "claude" ? "Claude" : "rules"}
+                    </div>
                   </td>
-                  <td className={td}>
-                    <Sev value={i.severity} bar />
-                  </td>
-                  <td className={td}>
-                    <StatusPill status={i.status} />
+                  <td className={td}>{i.ai.status === "grading" ? <span className="text-dim">—</span> : <Confidence value={i.confidence} />}</td>
+                  <td className={td}>{i.ai.status === "grading" ? <span className="text-dim">—</span> : <Sev value={i.severity} bar />}</td>
+                  <td className={`${td} whitespace-nowrap`}>
+                    {i.crp && i.status === "pending" ? (
+                      <span className="flex items-center gap-2">
+                        <CritBadge />
+                        <span className={`font-mono text-xs ${Date.parse(i.crp.slaDeadline) < now ? "text-red-400" : "text-amber-300"}`}>
+                          {Date.parse(i.crp.slaDeadline) < now ? "SLA BREACHED" : `SLA ${mmss(Date.parse(i.crp.slaDeadline) - now)}`}
+                        </span>
+                        <span className="font-mono text-xs text-muted">{i.crp.signoffs.length}/2 signed</span>
+                      </span>
+                    ) : (
+                      <StatusPill status={i.status} />
+                    )}
                   </td>
                 </tr>
               );

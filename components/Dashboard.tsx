@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DashboardState, Decision, SandboxItem } from "@/lib/types";
 import AuditLedger from "./AuditLedger";
 import DeployedPatches from "./DeployedPatches";
@@ -28,16 +28,16 @@ export default function Dashboard() {
   const [toast, setToast] = useState<SandboxItem | null>(null);
   const [analyst, setAnalyst] = useState(ANALYSTS[0]);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; tone: "refused" | "info" } | null>(null);
+  const [autoTraffic, setAutoTraffic] = useState(true);
   const seen = useRef<Set<string> | null>(null);
 
-  // Poll the API the simulator posts into; toast when a new zero-day lands
-  useEffect(() => {
-    let alive = true;
-    const load = () =>
+  // Poll the server; toast when a new zero-day lands
+  const load = useCallback(
+    () =>
       fetch("/api/state", { cache: "no-store" })
         .then((r) => r.json())
         .then((s: DashboardState) => {
-          if (!alive) return;
           setState(s);
           if (seen.current) {
             const fresh = s.items.find((i) => !seen.current!.has(i.id));
@@ -45,14 +45,58 @@ export default function Dashboard() {
           }
           seen.current = new Set(s.items.map((i) => i.id));
         })
-        .catch(() => {});
+        .catch(() => {}),
+    [],
+  );
+
+  useEffect(() => {
     load();
     const t = setInterval(load, 1500);
-    return () => {
-      alive = false;
-      clearInterval(t);
+    return () => clearInterval(t);
+  }, [load]);
+
+  // Built-in background traffic: one legitimate login per second
+  useEffect(() => {
+    if (!autoTraffic) return;
+    const t = setInterval(() => {
+      fetch("/api/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "legit" }) }).catch(() => {});
+    }, 1000);
+    return () => clearInterval(t);
+  }, [autoTraffic]);
+
+  // Demo hotkeys on the page: z = zero-day, c = critical 10/10, r = replay the last held attack
+  const simulate = useCallback(
+    async (kind: "z" | "c" | "r") => {
+      const r = await fetch("/api/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
+      const res = await r.json().catch(() => ({}));
+      if (!r.ok) setNotice({ text: res.error ?? "simulate failed", tone: "info" });
+      else if (res.verdict === "blocked") setNotice({ text: `ERR_CONNECTION_REFUSED · ${res.srcIp} blocked by ${res.ruleId}`, tone: "refused" });
+      else if (res.verdict === "sandboxed" && kind === "r") setNotice({ text: `Replay from ${res.srcIp} held again as ${res.id}: no patch approved yet`, tone: "info" });
+      load();
+    },
+    [load],
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      const el = e.target as HTMLElement;
+      if (el.closest("input, select, textarea, [contenteditable]")) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" || k === "c" || k === "r") {
+        e.preventDefault();
+        simulate(k);
+      }
     };
-  }, []);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [simulate]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   useEffect(() => {
     if (!toast) return;
@@ -83,7 +127,13 @@ export default function Dashboard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: openId, action, analyst }),
     });
-    if (r.ok) setState(await r.json());
+    const body = await r.json().catch(() => ({}));
+    if (r.ok) {
+      setState(body);
+      const it = (body as DashboardState).items.find((i) => i.id === openId);
+      if (it?.crp && it.status === "pending" && it.crp.signoffs.length === 1)
+        setNotice({ text: `Signature 1 of 2 recorded (${analyst}). Switch analyst in the sidebar to co-sign.`, tone: "info" });
+    } else setNotice({ text: body.error ?? "decision failed", tone: "info" });
     setBusy(false);
   };
 
@@ -113,7 +163,7 @@ export default function Dashboard() {
 
   return (
     <div className="h-full">
-      <Sidebar view={view} onView={setView} pending={pending} simOnline={state.simOnline} analyst={analyst} analysts={ANALYSTS} onAnalyst={pickAnalyst} onReset={resetDemo} />
+      <Sidebar view={view} onView={setView} pending={pending} simOnline={state.simOnline} analyst={analyst} analysts={ANALYSTS} onAnalyst={pickAnalyst} onReset={resetDemo} autoTraffic={autoTraffic} onAutoTraffic={setAutoTraffic} onKey={simulate} />
 
       <main className="flex h-full flex-col gap-px overflow-auto bg-line pl-64">
         <div className="grid shrink-0 grid-cols-4 bg-panel lg:grid-cols-9">
@@ -136,7 +186,17 @@ export default function Dashboard() {
         {view === "traffic" && <TrafficFeed traffic={state.traffic} />}
       </main>
 
-      {open && <InspectionModal key={open.id} item={open} ledger={state.ledger} patch={state.deployed.find((d) => d.itemId === open.id)} analyst={analyst} busy={busy} onClose={() => setOpenId(null)} onDecide={decide} />}
+      {open && <InspectionModal key={open.id} now={state.now} item={open} ledger={state.ledger} patch={state.deployed.find((d) => d.itemId === open.id)} analyst={analyst} busy={busy} onClose={() => setOpenId(null)} onDecide={decide} />}
+
+      {notice && (
+        <div
+          className={`fixed top-4 left-1/2 z-[60] -translate-x-1/2 border px-4 py-2.5 font-mono text-sm shadow-2xl animate-in fade-in-0 slide-in-from-top-2 ${
+            notice.tone === "refused" ? "border-neon bg-panel text-neon-hi" : "border-line bg-panel text-muted"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
 
       {toast && !open && (
         <div className="fixed right-5 bottom-5 z-40 flex items-center gap-4 border border-red-500/60 bg-panel px-4 py-3 shadow-2xl animate-in slide-in-from-bottom-4">
@@ -144,7 +204,7 @@ export default function Dashboard() {
           <div className="text-sm">
             <p className="font-semibold">Zero-day held in sandbox</p>
             <p className="font-mono text-xs text-muted">
-              {toast.id} · {toast.srcIp} · severity {toast.severity}/10 · {toast.confidence}%
+              {toast.id} · {toast.srcIp} · {toast.ai.status === "grading" ? "Claude grading…" : `severity ${toast.severity}/10 · ${toast.confidence}%`}
             </p>
           </div>
           <button

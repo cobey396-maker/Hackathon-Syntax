@@ -5,14 +5,17 @@ import type { LedgerEntry } from "./types";
 
 export type LedgerSource = "supabase" | "mock";
 
-const g = globalThis as unknown as { __vpsLedger?: LedgerEntry[]; __vpsLedgerSince?: string };
+const g = globalThis as unknown as { __vpsLedger?: LedgerEntry[]; __vpsLedgerAfterId?: number };
 const mem: LedgerEntry[] = (g.__vpsLedger ??= []);
 
 // Demo reset: clear the in-memory ledger and hide older Supabase rows from the dashboard.
 // Supabase rows are never deleted (the table is append-only).
-export function resetLedgerView() {
+// Uses the newest row id as the cutoff, not a timestamp: this machine's clock can drift from the database's.
+export async function resetLedgerView() {
   mem.length = 0;
-  g.__vpsLedgerSince = new Date().toISOString();
+  if (!supabase) return;
+  const { data } = await supabase.from("audit_ledger").select("id").order("id", { ascending: false }).limit(1);
+  g.__vpsLedgerAfterId = data?.[0]?.id ?? 0;
 }
 
 const fmtId = (n: number) => `AUD-${String(n).padStart(4, "0")}`;
@@ -41,7 +44,7 @@ export async function recordDecision(e: Omit<LedgerEntry, "id">): Promise<Ledger
 export async function listLedger(): Promise<{ ledger: LedgerEntry[]; source: LedgerSource }> {
   if (supabase) {
     let q = supabase.from("audit_ledger").select("*");
-    if (g.__vpsLedgerSince) q = q.gte("ts", g.__vpsLedgerSince);
+    if (g.__vpsLedgerAfterId) q = q.gt("id", g.__vpsLedgerAfterId);
     const { data, error } = await q.order("ts", { ascending: false }).limit(200);
     if (!error && data) {
       return {

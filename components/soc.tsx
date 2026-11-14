@@ -3,6 +3,17 @@ import type { Status } from "@/lib/types";
 
 export const hhmmss = (iso: string) => iso.slice(11, 19);
 
+// "4:59" countdown; negative = breached
+export function mmss(ms: number) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Red CRITICAL tag for packets under the Critical Response Protocol
+export function CritBadge() {
+  return <span className="inline-block bg-red-600 px-1.5 font-mono text-xs font-bold tracking-wider text-white">CRITICAL</span>;
+}
+
 export function sevText(s: number) {
   if (s >= 9) return "text-red-400";
   if (s >= 7) return "text-orange-400";

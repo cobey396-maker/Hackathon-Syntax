@@ -49,7 +49,8 @@ export type Verdict = {
   honeypot: string[];
   crashes: boolean;
   rules: Rule[];
-  plan: (ruleId: string) => PlanLine[];
+  attackClass: string; // rules-engine label; Claude may refine it
+  plan: (ruleId: string, severity: number) => PlanLine[]; // rebuilt when Claude regrades
 };
 
 export function inspect(p: RawPacket, base: Baseline): Verdict | null {
@@ -79,6 +80,10 @@ export function inspect(p: RawPacket, base: Baseline): Verdict | null {
 
   const sigma = base.std > 0 ? Math.abs(p.declared_len - base.mean) / base.std : 0;
   const crashes = overflow;
+  // Honeypot outcome follows what the packet actually does to the parser:
+  //   overflow -> crash; big length gap -> half-open session leak; small gap -> read timeout; else clean reject
+  const gap = p.declared_len - p.actual_len;
+  const outcome: "crash" | "leak" | "timeout" | "reject" = crashes ? "crash" : mismatch && gap > 1000 ? "leak" : mismatch ? "timeout" : "reject";
 
   const checks: Check[] = [
     { kind: "parser", field: "record.content_type", observed: "0x16 handshake", expected: "0x16", ok: true, points: 0, bytes: [0, 0] },
@@ -122,9 +127,9 @@ export function inspect(p: RawPacket, base: Baseline): Verdict | null {
     {
       kind: "sandbox",
       field: "honeypot replay",
-      observed: crashes ? "SIGSEGV ssl_record_read()" : "session table leak",
+      observed: { crash: "SIGSEGV ssl_record_read()", leak: "session table leak", timeout: "read timeout, dropped", reject: "rejected cleanly" }[outcome],
       expected: "clean parse",
-      ok: false,
+      ok: outcome === "reject" || outcome === "timeout",
       points: crashes ? 3 : 0,
       bytes: null,
     },
@@ -147,28 +152,52 @@ export function inspect(p: RawPacket, base: Baseline): Verdict | null {
           `[hp] parser terminated: production firewall would have crashed`,
           `[hp] contained: 0 bytes left sandbox`,
         ]
-      : [
-          `[parser] WARN state desync after header`,
-          `[parser] session entry left half-open`,
-          `[hp] no crash; repeated sends would exhaust session table`,
-          `[hp] contained: 0 bytes left sandbox`,
-        ]),
+      : outcome === "leak"
+        ? [
+            `[parser] WARN state desync after header`,
+            `[parser] session entry left half-open`,
+            `[hp] no crash; repeated sends would exhaust session table`,
+            `[hp] contained: 0 bytes left sandbox`,
+          ]
+        : outcome === "timeout"
+          ? [
+              `[parser] waiting for ${gap} missing bytes`,
+              `[parser] read timeout after 5000 ms; connection closed, session freed`,
+              `[hp] no crash, no leaked state; firewall unaffected`,
+              `[hp] contained: 0 bytes left sandbox`,
+            ]
+          : [
+              `[parser] handshake rejected: ${vOk ? "invalid cipher list" : "unsupported version"} (alert 70/40)`,
+              `[parser] no session state allocated`,
+              `[hp] no crash, no leaked state; firewall unaffected`,
+              `[hp] contained: 0 bytes left sandbox`,
+            ]),
   ];
 
   const fp = bytes.slice(0, 6).concat(bytes.slice(OFF.cipherLen, OFF.cipherLen + 4)).map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 12);
 
-  const plan = (ruleId: string): PlanLine[] => [
+  const plan = (ruleId: string, sev: number): PlanLine[] => [
     ...rules.map((r) => ({ cmd: `shield-rule ${ruleId} drop if ${r.cond}`, note: "drop matching handshakes before the firewall parser" })),
-    severity >= 7
-      ? { cmd: `acl edge-in deny host ${p.src_ip} expire 24h`, note: "source sent a parser-crashing payload" }
-      : severity >= 4
+    sev >= 7
+      ? { cmd: `acl edge-in deny host ${p.src_ip} expire 24h`, note: "critical protocol: source already quarantined; make it permanent for 24h" }
+      : sev >= 4
         ? { cmd: `rate-limit host ${p.src_ip} 5/min expire 24h`, note: "throttle while source is watched" }
         : { cmd: `watch host ${p.src_ip}`, note: "flag further handshakes for review" },
     { cmd: `ips watchlist add fp:${fp}`, note: "fingerprint of the malformed header" },
-    severity >= 8
-      ? { cmd: `incident open P1 "VPN parser overflow" notify psirt`, note: "crash reproduced; firewall is exploitable" }
-      : { cmd: `incident log weekly-review`, note: "no crash; track for variants" },
+    sev >= 7
+      ? { cmd: `incident open P1 "VPN parser ${crashes ? "overflow" : "fault"}" notify psirt`, note: "critical protocol: two-analyst sign-off, 5 min SLA" }
+      : { cmd: `incident log weekly-review`, note: "below critical; track for variants" },
   ];
 
-  return { severity, confidence, checks, bytes, honeypot, crashes, rules, plan };
+  const attackClass = overflow
+    ? "TLS record length overflow"
+    : mismatch
+      ? "Record length desync"
+      : !cOk && !vOk
+        ? "Handshake fuzzing"
+        : !vOk
+          ? "Protocol version probe"
+          : "Cipher-suite manipulation";
+
+  return { severity, confidence, checks, bytes, honeypot, crashes, rules, attackClass, plan };
 }

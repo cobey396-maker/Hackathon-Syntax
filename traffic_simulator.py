@@ -5,7 +5,7 @@ a malformed, zero-day VPN handshake (magenta), modelled on a VPN-parser overflow
 no real exploit, and IPs use RFC 5737 documentation ranges.
 
 Hotkeys:  z = inject zero-day (rotates mild -> moderate -> critical)
-          c = inject a critical zero-day (parser-crashing overflow, severity 10/10) - best for demos
+          c = inject a critical zero-day (parser-crashing overflow) - best for demos
           r = replay the last zero-day from the same attacker (refused once its patch is approved)
           q = quit
 Usage:    python traffic_simulator.py [--url http://localhost:3000/api/traffic] [--rate 1.0] [--auto-attack N]
@@ -129,13 +129,11 @@ def legit():
 
 
 def demo_critical():
-    """Always the same shape: overflow length + bad version + bad ciphers = 10/10, crashes the parser."""
+    """Always the parser-crashing overflow, with an otherwise clean-looking handshake (same as the dashboard's C key)."""
     p = legit()
     p["src_ip"] = ip("192.0.2")
     p["user"] = "vpnuser"
     p["declared_len"] = 0x8000
-    p["tls_version"] = 0x0305
-    p["cipher_suites"] = [0xC02B, 0xC02B, 0x00FF]
     return p
 
 
