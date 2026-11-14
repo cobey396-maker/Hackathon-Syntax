@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs>
+  <radialGradient id="sg" cx="38%" cy="32%" r="62%">
+    <stop offset="0" stop-color="#00bceb" stop-opacity=".05"/>
+    <stop offset=".62" stop-color="#049fd9" stop-opacity=".16"/>
+    <stop offset=".9" stop-color="#00bceb" stop-opacity=".55"/>
+    <stop offset="1" stop-color="#bff3ff" stop-opacity=".9"/>
+  </radialGradient>
+  <linearGradient id="sr" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#bff3ff"/><stop offset=".55" stop-color="#00bceb"/><stop offset="1" stop-color="#049fd9"/>
+  </linearGradient>
+  <radialGradient id="sb" cx="50%" cy="50%" r="50%">
+    <stop offset="0" stop-color="#00bceb" stop-opacity=".9"/><stop offset=".45" stop-color="#049fd9" stop-opacity=".35"/><stop offset="1" stop-color="#049fd9" stop-opacity="0"/>
+  </radialGradient>
+  <clipPath id="sc"><path d="M16.9 46A22 22 0 1 1 47.1 46Z"/></clipPath></defs>
+  <ellipse cx="32" cy="48.5" rx="24" ry="5" fill="url(#sb)"/>
+  <path d="M16.9 46A22 22 0 1 1 47.1 46Z" fill="#081a30"/>
+  <g clip-path="url(#sc)">
+  <path d="M8 40 13 40 15 30 17.5 42 20 24 22.5 40 25 33 27 40 32 40" fill="none" stroke="#f87171" stroke-width="1.5" stroke-linejoin="round" opacity=".85"/>
+  <path d="M32 40C35 40 36 37 39 37S43 40 46 40 52 40 56 40" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M32 18V44" stroke="#00bceb" stroke-width="1.2" stroke-dasharray="1.5 1.8"/>
+  <circle cx="32" cy="18" r="2" fill="#00bceb"/>
+  <rect x="8" y="42" width="48" height="6" fill="#049fd9" opacity=".18"/></g>
+  <path d="M16.9 46A22 22 0 1 1 47.1 46Z" fill="url(#sg)"/>
+  <path d="M16.9 46A22 22 0 1 1 47.1 46Z" fill="none" stroke="url(#sr)" stroke-width="1.6"/>
+  <ellipse cx="32" cy="46" rx="15.1" ry="2.4" fill="none" stroke="#00bceb" stroke-width="1.4"/>
+  <ellipse cx="32" cy="46.6" rx="6" ry="1" fill="#e9fbff" opacity=".9"/>
+  <path d="M15.5 25.5C17 17.5 23 12 30 10.6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>
+  <circle cx="44.5" cy="15.5" r="1.6" fill="#fff" opacity=".85"/>
+  </svg>

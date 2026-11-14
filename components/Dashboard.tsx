@@ -49,7 +49,7 @@ function App() {
       <header className="sticky top-0 z-20 border-b border-line bg-bg/75 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-6 py-3">
           <div className="flex items-center gap-3">
-            <LogoMark className="h-11 w-11 drop-shadow-[0_0_12px_rgba(0,188,235,0.45)]" />
+            <LogoMark className="h-12 w-12 drop-shadow-[0_0_14px_rgba(0,188,235,0.5)]" />
             <div>
               <p className="text-xl font-bold leading-tight tracking-tight">Shield<span className="text-neon-hi">Ops</span></p>
               <p className="text-xs text-muted">Cisco Digital Shield · HackNCAT 10.0</p>
