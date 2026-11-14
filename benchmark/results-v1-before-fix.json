@@ -1,0 +1,154 @@
+{
+  "ranAt": "2026-11-14T06:26:47.295Z",
+  "url": "http://localhost:3000",
+  "legit": {
+    "n": 300,
+    "flagged": 0
+  },
+  "unusual": {
+    "legacy-tls10": {
+      "n": 15,
+      "flagged": 0,
+      "mean": null,
+      "max": null,
+      "critical": 0
+    },
+    "grease-cipher": {
+      "n": 15,
+      "flagged": 15,
+      "mean": 1.6666666666666667,
+      "max": 2,
+      "critical": 0
+    },
+    "rsa-gcm-cipher": {
+      "n": 15,
+      "flagged": 15,
+      "mean": 2,
+      "max": 2,
+      "critical": 0
+    },
+    "large-pq-hello": {
+      "n": 15,
+      "flagged": 0,
+      "mean": null,
+      "max": null,
+      "critical": 0
+    }
+  },
+  "attacks": {
+    "version-probe": {
+      "n": 15,
+      "held": 14,
+      "refused": 1,
+      "missed": 0,
+      "rules": 1,
+      "graded": 12,
+      "mean": 2,
+      "min": 2,
+      "max": 2,
+      "sd": 0,
+      "mode": "2",
+      "modeShare": 1,
+      "critical": 0,
+      "classes": [
+        "Invalid record version (protocol oddity)",
+        "Unknown TLS record version",
+        "Invalid TLS record version"
+      ]
+    },
+    "cipher-fuzz": {
+      "n": 15,
+      "held": 15,
+      "refused": 0,
+      "missed": 0,
+      "rules": 2,
+      "graded": 14,
+      "mean": 2,
+      "min": 2,
+      "max": 2,
+      "sd": 0,
+      "mode": "2",
+      "modeShare": 1,
+      "critical": 0,
+      "classes": [
+        "Malformed cipher suite list (null/duplicate suites)",
+        "Empty cipher suite list ClientHello",
+        "Empty cipher suite list (protocol oddity)"
+      ]
+    },
+    "length-desync": {
+      "n": 15,
+      "held": 15,
+      "refused": 0,
+      "missed": 0,
+      "rules": 3,
+      "graded": 14,
+      "mean": 4.142857142857143,
+      "min": 4,
+      "max": 5,
+      "sd": 0.34992710611188255,
+      "mode": "4",
+      "modeShare": 0.8571428571428571,
+      "critical": 0,
+      "classes": [
+        "Record length mismatch (declared > payload)",
+        "TLS record length mismatch (truncated record)",
+        "TLS record length mismatch (truncated ClientHello)"
+      ]
+    },
+    "desync-fuzz": {
+      "n": 15,
+      "held": 14,
+      "refused": 1,
+      "missed": 0,
+      "rules": 5,
+      "graded": 13,
+      "mean": 6,
+      "min": 6,
+      "max": 6,
+      "sd": 0,
+      "mode": "6",
+      "modeShare": 1,
+      "critical": 0,
+      "classes": [
+        "TLS record length mismatch / session table exhaustion",
+        "TLS record length mismatch with session table leak",
+        "Handshake length mismatch with session table leak"
+      ]
+    },
+    "overflow": {
+      "n": 15,
+      "held": 15,
+      "refused": 0,
+      "missed": 0,
+      "rules": 8,
+      "graded": 14,
+      "mean": 9.571428571428571,
+      "min": 9,
+      "max": 10,
+      "sd": 0.4948716593053934,
+      "mode": "10",
+      "modeShare": 0.5714285714285714,
+      "critical": 15,
+      "classes": [
+        "TLS record length overflow",
+        "Record length overflow (parser crash)"
+      ]
+    }
+  },
+  "detectionRate": 1,
+  "crpCorrect": {
+    "ok": 73,
+    "total": 73
+  },
+  "claudeFallbacks": 6,
+  "fallbackNotes": [
+    "Claude rate-limited; rules score kept"
+  ],
+  "latency": {
+    "inlineRttP50": 12.952299999999923,
+    "inlineRttP95": 26.282799999999952,
+    "claudeP50": 3989,
+    "claudeP95": 6324
+  }
+}

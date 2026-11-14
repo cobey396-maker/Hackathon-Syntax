@@ -130,7 +130,16 @@ export default function InspectionModal({
                 </div>
                 <div className="grid grid-cols-2 gap-px bg-red-500/20 font-mono text-xs">
                   {[
-                    ["1 · Source quarantine", crp.quarantineLifted ? `lifted ${hhmmss(crp.quarantineLifted)}` : crp.quarantinedAt ? `${item.srcIp} held at edge` : "—"],
+                    [
+                      "1 · Source quarantine",
+                      crp.quarantineLifted
+                        ? `lifted ${hhmmss(crp.quarantineLifted)} · ${crp.liftReason === "expired" ? "expired, no analyst confirmed" : "decision signed"}`
+                        : crp.confirmedBy
+                          ? `${item.srcIp} held · confirmed by ${crp.confirmedBy.split(" · ")[0]}`
+                          : crp.quarantineExpires
+                            ? `${item.srcIp} held · auto-lifts in ${mmss(Math.max(0, Date.parse(crp.quarantineExpires) - now))} unless confirmed`
+                            : "—",
+                    ],
                     ["2 · Response SLA", item.status !== "pending" ? "met" : slaLeft > 0 ? `${mmss(slaLeft)} left` : "BREACHED"],
                     ["3 · Two-person rule", crp.signoffs.length ? crp.signoffs.map((s) => s.analyst.split(" · ")[0]).join(" + ") + ` (${crp.signoffs.length}/2)` : "0/2 signatures"],
                     ["4 · Incident", "P1 opened · PSIRT notified"],
@@ -165,6 +174,11 @@ export default function InspectionModal({
                       </span>
                     </p>
                     <p className="mt-1.5 text-muted">{item.ai.rationale}</p>
+                    {item.ai.engine === "claude" && (
+                      <p className="mt-2 font-mono text-xs text-dim">
+                        Shared with Claude: header fields, check results, honeypot outcome, source masked to /24. Not shared: username, full IP, payload bytes.
+                      </p>
+                    )}
                     {item.ai.riskFactors.length > 0 && (
                       <p className="mt-2 flex flex-wrap gap-1.5">
                         {item.ai.riskFactors.map((r) => (

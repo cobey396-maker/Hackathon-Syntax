@@ -34,14 +34,66 @@ When a packet is held, the parser checks give a quick **rules score**. The serve
 ANTHROPIC_API_KEY=sk-ant-...     # in .env.local (and in Vercel's environment variables)
 ```
 
+**Data minimization:** Claude only gets what grading needs: header fields, check results and the honeypot outcome. The **username, full source IP and payload bytes are never sent**; the source is masked to its /24 network (`maskIp` in `lib/grader.ts`). The modal says this under every Claude assessment.
+
 ## Critical Response Protocol (severity 7+)
 
-1. **Auto-quarantine:** the source IP is blocked at the edge the moment it's graded 7+, before any human looks (`QRN-xxxx` in Deployed Virtual Patches).
+1. **Auto-quarantine, time-limited:** the source IP is blocked at the edge the moment it's graded 7+, before any human looks (`QRN-xxxx` in Deployed Virtual Patches). It **lifts itself after 15 minutes** unless an analyst confirms it, which the first "Approve" signature does. An AI mistake can't block anyone indefinitely without a human agreeing.
 2. **5-minute response SLA:** countdown in the queue and the modal.
 3. **Two-person rule:** approving *or* overriding needs two different analysts. Sign once, switch analyst in the sidebar, sign again. The ledger records both names.
 4. **P1 incident:** the drafted patch opens a P1 incident and notifies PSIRT.
 
 The decision lifts the quarantine; an approval replaces it with the virtual patch.
+
+## Validation: benchmark
+
+`npm run benchmark` (with `npm run dev` running) drives the real pipeline end to end: edge enforcement, AI Shield checks, honeypot, Claude grading, Critical Response Protocol. It sends **300 clean logins, 60 unusual-but-legitimate handshakes** (TLS 1.0 clients, Chrome GREASE values, an uncommon RSA-GCM suite, large post-quantum ClientHellos) and **75 attacks** (15 each of five types). Full output is in `benchmark/results.md`.
+
+| | Run 1 | Run 2 (after fix) |
+|---|---:|---:|
+| Attacks caught (75) | 100% | 100% |
+| False positives, clean logins (300) | 0% | 0% |
+| **False positives, unusual-but-legit (60)** | **50%** | **0%** |
+| Critical protocol armed exactly at severity ≥ 7 | 73/73 | 74/74 |
+| Claude grading fell back to rules | 6 (rate-limited) | 0 |
+
+**What run 1 caught:** the shield held *every* handshake carrying RFC 8701 GREASE cipher values, which Chrome sends on purpose, and every handshake offering the valid but uncommon `0x009C` suite. In production that would have quarantined real users. We fixed the detector (ignore GREASE, recognize registered suites) and re-ran; run 1 is kept in `benchmark/results-v1-before-fix.md`.
+
+**Claude's grades are consistent and spread across the scale** (run 2, 15 per type):
+
+| Attack | Rules score | Claude mean | Range | Critical protocol |
+|---|---:|---:|---:|---:|
+| Protocol version probe | 2 | 2.0 | 2–2 | 0/15 |
+| Cipher-suite fuzz | 2 | 2.0 | 2–2 | 0/15 |
+| Small length desync | 3 | 4.3 | 4–5 | 0/15 |
+| Large desync + fuzz | 5 | 6.0 | 6–6 | 0/14 |
+| Length overflow (parser crash) | 8 | 9.5 | 9–10 | 15/15 |
+
+No attack type ever crossed the critical line in the wrong direction: none of the mild types reached 7, and every overflow did.
+
+| Step | p50 | p95 |
+|---|---:|---:|
+| Inline verdict (HTTP round trip on localhost, includes Next.js overhead) | 12.1 ms | 31.3 ms |
+| Claude grading (runs after the packet is already held) | 4.0 s | 5.6 s |
+
+## Limitations & Safeguards
+
+**Limitations (what this prototype does not prove)**
+- **Simulated traffic only.** Attacks and logins come from our generator (`lib/sim.ts`), so 100% detection means "catches the attack types we modeled," not "catches real zero-days." The next step is replaying real pcaps (e.g. public TLS fuzzing corpora) through `/api/traffic`.
+- **Detection is structural.** The inline shield catches handshakes that break the protocol's structure. An exploit hidden inside a *well-formed* handshake would pass. Claude grades and explains *after* a packet is flagged; it does not decide what gets flagged.
+- **The honeypot is simulated.** It predicts crash / leak / timeout from the packet's fields; it doesn't run real firewall firmware.
+- **Claude can be wrong.** It runs at low effort for speed; small desyncs vary between 4 and 5. The rules score is always shown beside Claude's so analysts can see disagreements.
+- **State is in memory.** On Vercel, serverless instances can split or reset the queue; the audit ledger in Supabase is the durable record. Run locally for demos.
+- **Ledger keeps full source IPs** of blocked sources, because accountability needs them.
+
+**Safeguards (how we limit harm)**
+- **Human in the loop:** nothing the AI drafts goes live until an analyst approves it; severity 7+ needs two different analysts.
+- **Proportionate blocking:** the only automatic action (critical quarantine) lifts after 15 minutes unless a human confirms it, and the response scales with severity (watch → rate-limit → ACL block).
+- **False-positive check before approval:** each drafted rule is tested against recent legitimate logins, and the benchmark tests it against unusual-but-legitimate clients.
+- **Explainability:** every verdict shows the failing bytes, the checks, the honeypot log, Claude's rationale and the exact config changes.
+- **Accountability:** decisions go to an append-only Supabase ledger written through a validated database function, naming who signed.
+- **Data minimization:** no usernames, full IPs or payloads go to the AI model.
+- **Fail-safe:** if Claude is unreachable, rate-limited or declines, the deterministic rules score stands and the UI says so.
 
 ## How it works
 

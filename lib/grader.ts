@@ -46,10 +46,10 @@ Use the whole range. Two packets with different evidence should usually get diff
 Return only the JSON object.`;
 
 export async function gradeWithClaude(p: RawPacket, checks: Check[], crashes: boolean): Promise<ClaudeGrade> {
+  // Data minimization: only what grading needs. No username, no payload bytes, source masked to /24.
   const evidence = {
     protocol: p.protocol,
-    source_ip: p.src_ip,
-    user: p.user,
+    source_network: maskIp(p.src_ip),
     record_version: "0x" + p.tls_version.toString(16).padStart(4, "0"),
     declared_length: p.declared_len,
     actual_payload_length: p.actual_len,
@@ -81,6 +81,8 @@ export async function gradeWithClaude(p: RawPacket, checks: Check[], crashes: bo
     risk_factors: (g.risk_factors ?? []).slice(0, 4).map((r) => String(r).slice(0, 60)),
   };
 }
+
+export const maskIp = (ip: string) => ip.replace(/\.\d+$/, ".0/24");
 
 export function errorNote(e: unknown) {
   if (e instanceof Anthropic.AuthenticationError) return "Claude API key rejected";

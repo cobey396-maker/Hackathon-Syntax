@@ -48,6 +48,9 @@ export type AiGrade = {
 export type CriticalProtocol = {
   quarantinedAt: string | null; // source auto-quarantined at the edge
   quarantineLifted: string | null;
+  liftReason: "expired" | "decided" | null; // expired = no analyst confirmed it within 15 min
+  quarantineExpires: string | null; // auto-expiry; null once an analyst confirms the hold
+  confirmedBy: string | null; // first analyst to sign "approve" confirms the quarantine
   slaDeadline: string; // respond within 5 minutes
   signoffs: { analyst: string; action: Decision; ts: string }[]; // two-person rule
 };
@@ -108,6 +111,7 @@ export type DeployedPatch = {
   srcBlocked: boolean; // acl deny on the source (severity >= 7)
   analyst: string;
   deployedAt: string;
+  expiresAt: string | null; // quarantines lapse after 15 min unless confirmed; patches never do
   hits: number;
   lastHit: string | null;
 };

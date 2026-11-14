@@ -1,5 +1,5 @@
 import type { DeployedPatch } from "@/lib/types";
-import { hhmmss, Pane, td, th } from "./soc";
+import { hhmmss, mmss, Pane, td, th } from "./soc";
 
 // Virtual patches an analyst approved. They run at the edge before the AI: a match is refused outright.
 export default function DeployedPatches({ deployed, now }: { deployed: DeployedPatch[]; now: number }) {
@@ -38,7 +38,12 @@ export default function DeployedPatches({ deployed, now }: { deployed: DeployedP
                   </td>
                   <td className={`${td} font-mono text-xs ${d.kind === "quarantine" ? "text-red-300" : "text-cisco"}`}>
                     {d.kind === "quarantine" ? (
-                      <div>QUARANTINE · all traffic from source, pending two-analyst review of {d.itemId}</div>
+                      <>
+                        <div>QUARANTINE · all traffic from source, pending two-analyst review of {d.itemId}</div>
+                        <div className="text-muted">
+                          {d.expiresAt ? `auto-lifts in ${mmss(Math.max(0, Date.parse(d.expiresAt) - now))} unless an analyst confirms` : "confirmed by an analyst · holds until co-signed"}
+                        </div>
+                      </>
                     ) : (
                       d.conds.map((c) => <div key={c}>drop if {c}</div>)
                     )}

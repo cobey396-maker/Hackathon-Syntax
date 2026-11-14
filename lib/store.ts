@@ -7,6 +7,9 @@ import type { DashboardState, Decision, DeployedPatch, PlanLine, RawPacket, Sand
 
 export const CRITICAL = 7; // severity at or above this arms the Critical Response Protocol
 const SLA_MS = 5 * 60_000;
+// Auto-quarantine is proportionate: it lapses after 15 minutes unless an analyst confirms it,
+// so an AI false positive can't block a source indefinitely with no human involved.
+export const QUARANTINE_MS = 15 * 60_000;
 
 type Store = {
   items: SandboxItem[];
@@ -36,8 +39,8 @@ const fresh = (): Store => ({
   tierIdx: 0,
 });
 
-const g = globalThis as unknown as { __vpsStore7?: Store };
-const store: Store = (g.__vpsStore7 ??= fresh());
+const g = globalThis as unknown as { __vpsStore8?: Store };
+const store: Store = (g.__vpsStore8 ??= fresh());
 
 // Demo reset: empty queue, patches, traffic and counters. Keeps the simulator "online" state.
 export async function reset() {
@@ -73,7 +76,22 @@ function enforce(p: RawPacket) {
 
 export type IngestResult = { blocked: DeployedPatch } | { item: SandboxItem; packet: RawPacket } | null;
 
+// Lift any auto-quarantine whose 15 minutes ran out without an analyst confirming it.
+function expireQuarantines(now = Date.now()) {
+  store.deployed = store.deployed.filter((d) => {
+    if (d.kind !== "quarantine" || !d.expiresAt || Date.parse(d.expiresAt) > now) return true;
+    const item = store.items.find((i) => i.id === d.itemId);
+    if (item?.crp && !item.crp.quarantineLifted) {
+      item.crp.quarantineLifted = d.expiresAt;
+      item.crp.liftReason = "expired";
+      item.crp.quarantineExpires = null;
+    }
+    return false;
+  });
+}
+
 export function ingest(p: RawPacket): IngestResult {
+  expireQuarantines();
   store.stats.seen++;
   store.lastEventAt = Date.now();
   const patch = enforce(p);
@@ -172,7 +190,16 @@ export async function gradeItem(id: string, p: RawPacket) {
 function armProtocol(item: SandboxItem) {
   if (item.severity < CRITICAL || item.crp || item.status !== "pending") return;
   const now = new Date();
-  item.crp = { quarantinedAt: now.toISOString(), quarantineLifted: null, slaDeadline: new Date(now.getTime() + SLA_MS).toISOString(), signoffs: [] };
+  const expires = new Date(now.getTime() + QUARANTINE_MS).toISOString();
+  item.crp = {
+    quarantinedAt: now.toISOString(),
+    quarantineLifted: null,
+    liftReason: null,
+    quarantineExpires: expires,
+    confirmedBy: null,
+    slaDeadline: new Date(now.getTime() + SLA_MS).toISOString(),
+    signoffs: [],
+  };
   store.deployed.unshift({
     kind: "quarantine",
     ruleId: item.ruleId.replace("VP-", "QRN-"),
@@ -183,6 +210,7 @@ function armProtocol(item: SandboxItem) {
     srcBlocked: true,
     analyst: "AI Shield (auto)",
     deployedAt: now.toISOString(),
+    expiresAt: expires,
     hits: 0,
     lastHit: null,
   });
@@ -201,12 +229,24 @@ export async function decide(id: string, action: Decision, analyst: string): Pro
     const first = item.crp.signoffs[0];
     if (!first || first.action !== action) {
       item.crp.signoffs = [{ analyst, action, ts: new Date().toISOString() }];
+      // A human signing "approve" confirms the auto-quarantine: it stops expiring and holds until co-sign.
+      const q = store.deployed.find((d) => d.kind === "quarantine" && d.itemId === item.id);
+      if (action === "approve" && q) {
+        q.expiresAt = null;
+        q.analyst = `AI Shield · confirmed by ${analyst}`;
+        item.crp.quarantineExpires = null;
+        item.crp.confirmedBy = analyst;
+      }
       return { ok: true, final: false };
     }
     if (first.analyst === analyst) return { ok: false, status: 409, error: "two-person rule: a different analyst must co-sign" };
     item.crp.signoffs.push({ analyst, action, ts: new Date().toISOString() });
     signedBy = `${first.analyst} + ${analyst}`;
-    item.crp.quarantineLifted = new Date().toISOString();
+    if (!item.crp.quarantineLifted) {
+      item.crp.quarantineLifted = new Date().toISOString();
+      item.crp.liftReason = "decided";
+    }
+    item.crp.quarantineExpires = null;
     store.deployed = store.deployed.filter((d) => !(d.kind === "quarantine" && d.itemId === item.id));
   }
 
@@ -226,6 +266,7 @@ export async function decide(id: string, action: Decision, analyst: string): Pro
       srcBlocked: item.severity >= CRITICAL,
       analyst: signedBy,
       deployedAt: new Date().toISOString(),
+      expiresAt: null,
       hits: 0,
       lastHit: null,
     });
@@ -246,6 +287,7 @@ export async function decide(id: string, action: Decision, analyst: string): Pro
 
 export async function snapshot(): Promise<DashboardState> {
   const now = Date.now();
+  expireQuarantines(now);
   const { ledger, source } = await listLedger();
   return {
     items: store.items,

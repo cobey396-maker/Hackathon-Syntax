@@ -55,3 +55,21 @@ export function malformed(tier: Tier): RawPacket {
 export function demoCritical(): RawPacket {
   return { ...legit(), src_ip: ip("192.0.2"), user: "vpnuser", declared_len: 0x8000 };
 }
+
+// Legitimate handshakes that look unusual. Used by the benchmark to measure false positives on
+// traffic real clients actually send, not only on the clean logins above.
+export const UNUSUAL = ["legacy-tls10", "grease-cipher", "rsa-gcm-cipher", "large-pq-hello"] as const;
+export type Unusual = (typeof UNUSUAL)[number];
+
+export function unusualLegit(kind: Unusual): RawPacket {
+  const p = legit();
+  if (kind === "legacy-tls10") p.tls_version = 0x0301; // old client still on TLS 1.0 record version
+  else if (kind === "grease-cipher") p.cipher_suites = [pick([0x0a0a, 0x1a1a, 0x2a2a, 0xdada]), ...p.cipher_suites]; // RFC 8701 GREASE, sent by Chrome
+  else if (kind === "rsa-gcm-cipher") p.cipher_suites = [...p.cipher_suites, 0x009c]; // TLS_RSA_WITH_AES_128_GCM_SHA256, valid but uncommon
+  else {
+    const n = int(1400, 1900); // hybrid post-quantum key share makes the ClientHello much larger
+    p.declared_len = n;
+    p.actual_len = n;
+  }
+  return { ...p, payload_hex: stamp(p).payload_hex };
+}

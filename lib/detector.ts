@@ -4,7 +4,16 @@ import type { Check, PlanLine, RawPacket, Timings } from "./types";
 
 export const PARSER_BUFFER = 0x4000; // record buffer in the simulated VPN parser
 const VALID_VERSIONS = [0x0301, 0x0302, 0x0303, 0x0304];
-const KNOWN_CIPHERS = new Set([0x1301, 0x1302, 0x1303, 0xc02b, 0xc02c, 0xc02f, 0xc030, 0xcca8, 0xcca9]);
+// Registered suites a real client may offer: TLS 1.3, ECDHE, and the RSA-key-exchange GCM/CBC suites
+// older clients still send. (Benchmark v1 flagged 0x009C, a valid suite, as unknown.)
+const KNOWN_CIPHERS = new Set([
+  0x1301, 0x1302, 0x1303, 0xc02b, 0xc02c, 0xc02f, 0xc030, 0xcca8, 0xcca9,
+  0xc009, 0xc00a, 0xc013, 0xc014, 0xc023, 0xc024, 0xc027, 0xc028, 0x009c, 0x009d, 0x009e, 0x009f, 0x002f, 0x0035,
+]);
+// RFC 8701 GREASE values (0x0A0A, 0x1A1A … 0xFAFA). Browsers add them on purpose; ignore them.
+// (Benchmark v1 held every Chrome-style handshake because of these.)
+const isGrease = (c: number) => (c & 0x0f0f) === 0x0a0a && c >> 12 === ((c >> 4) & 0x0f);
+const realCiphers = (cs: number[]) => cs.filter((c) => !isGrease(c));
 
 export const hex = (n: number, w = 4) => "0x" + n.toString(16).toUpperCase().padStart(w, "0");
 
@@ -55,7 +64,8 @@ export type Verdict = {
 
 export function inspect(p: RawPacket, base: Baseline): Verdict | null {
   const bytes = buildBytes(p);
-  const n = p.cipher_suites.length;
+  const cs = realCiphers(p.cipher_suites);
+  const n = cs.length;
   const rules: Rule[] = [];
 
   const vOk = VALID_VERSIONS.includes(p.tls_version);
@@ -67,13 +77,16 @@ export function inspect(p: RawPacket, base: Baseline): Verdict | null {
   if (overflow) rules.push({ cond: `tls.record.length > ${hex(PARSER_BUFFER)}`, test: (q) => q.declared_len > PARSER_BUFFER });
   else if (mismatch) rules.push({ cond: "tls.record.length != payload.length", test: (q) => q.declared_len !== q.actual_len });
 
-  const dup = new Set(p.cipher_suites).size !== n;
-  const unknown = p.cipher_suites.filter((c) => !KNOWN_CIPHERS.has(c));
+  const dup = new Set(cs).size !== n;
+  const unknown = cs.filter((c) => !KNOWN_CIPHERS.has(c));
   const cOk = n > 0 && !dup && unknown.length === 0;
   if (!cOk)
     rules.push({
       cond: "handshake.cipher_suites invalid",
-      test: (q) => q.cipher_suites.length === 0 || new Set(q.cipher_suites).size !== q.cipher_suites.length || q.cipher_suites.some((c) => !KNOWN_CIPHERS.has(c)),
+      test: (q) => {
+        const qc = realCiphers(q.cipher_suites);
+        return qc.length === 0 || new Set(qc).size !== qc.length || qc.some((c) => !KNOWN_CIPHERS.has(c));
+      },
     });
 
   if (rules.length === 0) return null;
