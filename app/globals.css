@@ -1,20 +1,37 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Dark SOC palette. Neon purple = human-in-the-loop controls and active states only.
-   Cisco Blue = secondary accents and data visualisation. */
+/* Cisco-inspired palette: deep navy surfaces, Cisco Blue for primary actions and active states,
+   and Cisco's green / yellow / red for outcomes. "neon" is kept as the token name used by components. */
 @theme {
-  --color-bg: #0b0d12;
-  --color-panel: #11141b;
-  --color-panel-2: #161a23;
-  --color-line: #1e2330;
-  --color-ink: #f3f4f6;
-  --color-muted: #8a93a6;
-  --color-dim: #5b6476;
-  --color-neon: #b026ff;
-  --color-neon-hi: #c858ff;
+  --color-bg: #061426;
+  --color-panel: #0b1e36;
+  --color-panel-2: #11294a;
+  --color-line: #1d3b5f;
+  --color-ink: #f2f7fc;
+  --color-muted: #9db3cc;
+  --color-dim: #64809f;
+  --color-neon: #049fd9; /* Cisco Blue */
+  --color-neon-hi: #00bceb; /* bright Cisco blue */
   --color-cisco: #049fd9;
   --color-cisco-deep: #005073;
+
+  /* Outcome colours mapped onto Cisco's status palette */
+  --color-emerald-200: #c4e8b1;
+  --color-emerald-300: #9fd884;
+  --color-emerald-400: #6cc04a;
+  --color-emerald-500: #6cc04a;
+  --color-amber-200: #fdd88a;
+  --color-amber-300: #fbc04a;
+  --color-amber-400: #fbab18;
+  --color-amber-500: #fbab18;
+  --color-red-200: #ffc2bf;
+  --color-red-300: #ff8a84;
+  --color-red-400: #ff5c55;
+  --color-red-500: #e2231a;
+  --color-sky-300: #6fd6f5;
+  --color-sky-400: #00bceb;
+  --color-sky-500: #049fd9;
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
 

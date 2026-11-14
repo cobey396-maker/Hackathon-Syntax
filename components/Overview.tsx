@@ -3,6 +3,7 @@
 import { ArrowRight, CheckCircle2, FlaskConical, Radar, UserCheck } from "lucide-react";
 import { SCENARIOS } from "@/lib/simulation/scenarios";
 import { counts } from "@/lib/simulation/selectors";
+import ProcessMap, { viewForTraffic } from "./ProcessMap";
 import { useSimulation } from "./simulation/SimulationProvider";
 import { Card, StatusBadge } from "./ui";
 
@@ -60,6 +61,8 @@ export default function Overview({ onLaunch, onOpen }: { onLaunch: (id: string) 
           </Card>
         ))}
       </div>
+
+      <ProcessMap view={viewForTraffic(state.traffic[0])} title="Latest connection" />
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">How it works</h2>

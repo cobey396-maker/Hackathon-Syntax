@@ -8,6 +8,7 @@ import { SCENARIOS } from "@/lib/simulation/scenarios";
 import { incidentById } from "@/lib/simulation/selectors";
 import type { CaseResult } from "@/lib/simulation/types";
 import HoneypotTerminal from "./HoneypotTerminal";
+import ProcessMap, { viewForIncident } from "./ProcessMap";
 import { findingText, impactText, OUTCOME, ruleText, storyStep } from "./plain";
 import { useSimulation } from "./simulation/SimulationProvider";
 import { Badge, Card, Details, StatusBadge } from "./ui";
@@ -115,6 +116,8 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
           );
         })}
       </ol>
+
+      <ProcessMap view={viewForIncident(inc, state.firewall.rules.filter((r) => r.origin === "patch").length)} />
 
       {/* 1. Spotted */}
       <Card>
@@ -310,7 +313,7 @@ export default function IncidentStory({ id, onBack }: { id: string; onBack: () =
             <p className="text-muted">{isRunning ? "Investigating…" : "The system pauses here so you can explain each step."}</p>
             <button
               onClick={() => (isRunning ? stop() : autoRun(inc.id))}
-              className="flex items-center gap-2 rounded-xl bg-sky-500 px-6 py-3 text-lg font-semibold text-white hover:bg-sky-400"
+              className="flex items-center gap-2 rounded-xl border-2 border-neon bg-neon/15 px-6 py-3 text-lg font-semibold text-neon-hi hover:bg-neon/25"
             >
               {isRunning ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
               {isRunning ? "Pause" : step === 0 ? "Investigate" : "Continue"}
